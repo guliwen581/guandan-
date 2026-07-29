@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+*.log
+server/*.log
+npm-debug.log*
+
+# 参考录像等大文件不入库
+*.mp4
