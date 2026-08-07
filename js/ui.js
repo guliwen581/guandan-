@@ -67,6 +67,48 @@
     addGem(88); toast('演示：每日免费钻石 +88 已领取'); shop = null;
   }
   GLOBAL.GDShopClose = function () { shop = null; render(lastSnap); };   // 供弹窗遮罩内联点击关闭
+  // ---- P2 桌布主题 / 设置面板 / 战绩 / 签到 ----
+  var THEMES = [{ k: 'classic', n: '经典' }, { k: 'modern', n: '现代' }, { k: 'gufeng', n: '古风' }, { k: 'xiaguang', n: '霞光' }];
+  var panel = null;   // 'settings' | 'hist'
+  function themeCur() { try { var t = localStorage.getItem('gd_theme'); return THEMES.some(function (x) { return x.k === t; }) ? t : 'classic'; } catch (e) { return 'classic'; } }
+  function applyTheme() { try { document.body.dataset.theme = themeCur(); } catch (e) {} }
+  GLOBAL.GDPanelClose = function () { panel = null; render(lastSnap); };
+  function histList() { try { return JSON.parse(localStorage.getItem('gd_hist') || '[]'); } catch (e) { return []; } }
+  function histSave(snap) {
+    if (!snap.lastResult) return;
+    var r = snap.lastResult, mode = snap.mode && snap.mode.match ? '积分赛' : snap.mode && snap.mode.gold ? '金币场' : '晋级场';
+    var e = { t: new Date().toLocaleString('zh-CN', { hour12: false }), m: mode, w: r.winTeam === 0, c: r.comboName, mu: snap.mult, d: r.delta };
+    try { var h = histList(); h.unshift(e); localStorage.setItem('gd_hist', JSON.stringify(h.slice(0, 20))); } catch (er) {}
+  }
+  function doSign() {
+    var today = new Date().toDateString(), k = 'gd_sign_date';
+    try {
+      if (localStorage.getItem(k) === today) { toast('今日已签到，明天再来～'); return; }
+      var yest = new Date(Date.now() - 86400000).toDateString();
+      var streak = (localStorage.getItem(k) === yest) ? (+(localStorage.getItem('gd_sign_streak') || 0) + 1) : 1;
+      localStorage.setItem(k, today); localStorage.setItem('gd_sign_streak', String(streak));
+      addGem(20 + Math.min(streak, 7) * 5);
+      toast('签到成功 · 连续' + streak + '天 · 💎+' + (20 + Math.min(streak, 7) * 5));
+    } catch (e) { toast('签到失败'); }
+    panel = null; render(lastSnap);
+  }
+  function panelHtml() {
+    if (panel === 'settings') {
+      var cur = themeCur();
+      var sw = THEMES.map(function (t) { return '<span class="thsw' + (t.k === cur ? ' on' : '') + '" data-theme-pick="' + t.k + '">' + t.n + '</span>'; }).join('');
+      return '<div class="modal" onclick="if(event.target===this&&window.GDPanelClose)window.GDPanelClose()"><div class="mbox"><h3>更多设置</h3><div class="msub">桌布主题 · 操作习惯</div>' +
+        '<div class="plan"><div class="pi">🎨</div><div class="pt"><b>桌布主题</b><span class="thsws">' + sw + '</span></div></div>' +
+        '<div class="plan" data-act="btnpos-reset"><div class="pi">🧭</div><div class="pt"><b>按钮组位置复位</b><span>长按桌中时钟可拖动按钮组</span></div><div class="pp">复位</div></div>' +
+        '<div class="plan"><div class="pi">ℹ️</div><div class="pt"><b>关于</b><span>掼蛋经典 · 网页版 · v1.1 · 免费无内购</span></div></div>' +
+        '<div class="mbtns"><button class="mclose" data-act="panel-close">关闭</button></div></div></div>';
+    }
+    if (panel === 'hist') {
+      var list = histList();
+      var rows = list.length ? list.map(function (e) { return '<div class="plan"><div class="pi">' + (e.w ? '🏆' : '💧') + '</div><div class="pt"><b>' + e.m + ' · ' + e.c + '</b><span>' + esc(e.t) + '</span></div><div class="pp">' + (e.w ? '+' : '') + e.d + '</div></div>'; }).join('') : '<div class="msub">暂无战绩，快去打一局吧</div>';
+      return '<div class="modal" onclick="if(event.target===this&&window.GDPanelClose)window.GDPanelClose()"><div class="mbox"><h3>我的战绩</h3><div class="msub">最近 20 局</div>' + rows + '<div class="mbtns"><button class="mclose" data-act="panel-close">关闭</button></div></div></div>';
+    }
+    return '';
+  }
   function shopHtml() {
     var title = shop === 'vip' ? '月卡会员' : shop === 'first' ? '首充礼包' : '免费福利';
     var plans = '';
@@ -131,7 +173,7 @@
     var goldOn = snap && snap.mode && snap.mode.gold, matchOn = snap && snap.mode && snap.mode.match;
     var noneOn = !goldOn && !matchOn;
     var goldtoggle = '<div class="goldtoggle"><span data-gold=""' + (noneOn ? ' class="on"' : '') + '>🏆 晋级场<div class="gt-sub">打2→A 升级赛制</div></span><span data-gold="1"' + (goldOn ? ' class="on"' : '') + '>🪙 金币场<div class="gt-sub">无限局·底分×倍数结算</div></span><span data-gold="match"' + (matchOn ? ' class="on"' : '') + '>🏟️ 积分赛<div class="gt-sub">4局·积分排名决胜</div></span></div>';
-    return '<div class="lobby"><div class="clouds"></div><div class="deco"></div><div class="topbar"><div class="back">‹ 掼蛋经典' + (vip() ? '<i class="vip">VIP</i>' : '') + '</div><div class="currency"><span>🪙 <b>' + coins + '</b></span><span>💎 <b>' + gem() + '</b></span></div><div class="shop"><span data-act="shop-vip">月卡会员</span><span data-act="shop-first">首充礼包</span><span data-act="shop-free">免费金币</span></div></div><div class="lobby-body">' + goldtoggle + '<ul class="modes">' + modes + '</ul><div class="rooms">' + rooms + '</div></div><button class="quickstart" data-act="quick">快速开始<div class="sub">' + (matchOn ? '积分赛' : goldOn ? '金币场' : '经典玩法') + '·' + selRoom.n + (ns ? '·不洗牌' : '') + '</div></button><button class="quickstart onlinebtn" data-act="online">🌐 联机对战<div class="sub">创建/加入房间·和朋友同屏</div></button></div>' + (shop ? shopHtml() : '');
+    return '<div class="lobby"><div class="clouds"></div><div class="deco"></div><div class="topbar"><div class="back">‹ 掼蛋经典' + (vip() ? '<i class="vip">VIP</i>' : '') + '</div><div class="currency"><span>🪙 <b>' + coins + '</b></span><span>💎 <b>' + gem() + '</b></span></div><div class="shop"><span data-act="signin">每日签到</span><span data-act="hist">战绩</span><span data-act="shop-vip">月卡会员</span><span data-act="shop-first">首充礼包</span><span data-act="shop-free">免费金币</span></div></div><div class="lobby-body">' + goldtoggle + '<ul class="modes">' + modes + '</ul><div class="rooms">' + rooms + '</div></div><button class="quickstart" data-act="quick">快速开始<div class="sub">' + (matchOn ? '积分赛' : goldOn ? '金币场' : '经典玩法') + '·' + selRoom.n + (ns ? '·不洗牌' : '') + '</div></button><button class="quickstart onlinebtn" data-act="online">🌐 联机对战<div class="sub">创建/加入房间·和朋友同屏</div></button></div>' + (shop ? shopHtml() : '') + panelHtml();
   }
 
   function onlineEntryHtml() {
@@ -225,6 +267,9 @@
     }
     return '<div class="strip"><span class="seltype">' + (selType || '同花顺') + '</span><div class="pips">' + pip('S') + pip('H') + pip('C') + pip('D') + '</div></div>';
   }
+  var btnPos = null;   // P2 按钮组拖拽位置（长按桌中时钟拖动）
+  function loadBtnPos() { try { var p = JSON.parse(localStorage.getItem('gd_btnpos') || 'null'); if (p && typeof p.x === 'number' && typeof p.y === 'number') btnPos = p; } catch (e) {} }
+  function caStyle() { return btnPos ? ' style="transform:translate(' + btnPos.x + 'px,' + btnPos.y + 'px)"' : ''; }
   function centerHtml(snap) {
     if (snap.canTribute && snap.tribute && snap.tribute.tributeKind === 'give') {
       var multi = (snap.tribute.giveCandidates || []).length > 1;
@@ -236,9 +281,9 @@
       return '<div class="center-actions"><div class="tbtxt">' + wn + '</div></div>';
     }
     if (!snap.canPlay) return '';
-    var clk = '<div class="clock' + (timeLeft <= 5 ? ' low' : '') + '"><div class="face">' + timeLeft + '</div></div>';
+    var clk = '<div class="clock' + (timeLeft <= 5 ? ' low' : '') + '" title="长按可拖动按钮组"><div class="face">' + timeLeft + '</div></div>';
     var leg = selIsLegal(snap);
-    return '<div class="center-actions">' + (snap.leading ? '' : '<button class="ca-pass" data-act="pass">不出</button>') + clk + '<button class="ca-hint" data-act="hint">提示</button><button class="ca-play' + (leg ? ' go' : '') + '" data-act="play"' + (selected.size ? '' : ' disabled') + '>出牌</button></div>';
+    return '<div class="center-actions"' + caStyle() + '>' + (snap.leading ? '' : '<button class="ca-pass" data-act="pass">不出</button>') + clk + '<button class="ca-hint" data-act="hint">提示</button><button class="ca-play' + (leg ? ' go' : '') + '" data-act="play"' + (selected.size ? '' : ' disabled') + '>出牌</button></div>';
   }
   function cornerHtml(snap) {
     if (!snap.canPlay) return '<div class="corner-actions"><button class="chatbtn" data-act="chat">💬</button></div>';
@@ -342,7 +387,8 @@
     if (snap.phase === 'play' && !dealShown) { dealShown = true; sfx('deal'); }
     diffSfx(prev, snap); lastSnap = snap;
     if (typeof Voice !== 'undefined' && Voice) Voice.sync(prev, snap);   // 人声解说（边沿触发，不重复）
-    app.innerHTML = snap.phase === 'lobby' ? lobbyHtml(snap) : (tableHtml(snap) + (snap.phase === 'settle' && snap.lastResult ? settleHtml(snap.lastResult) : '') + (replayIdx >= 0 ? replayHtml() : ''));
+    if (snap.phase === 'settle' && prev && prev.phase !== 'settle' && snap.lastResult && !demo) histSave(snap);   // P2 战绩记录（进结算瞬间一次）
+    app.innerHTML = snap.phase === 'lobby' ? lobbyHtml(snap) : (tableHtml(snap) + (snap.phase === 'settle' && snap.lastResult ? settleHtml(snap.lastResult) : '') + (replayIdx >= 0 ? replayHtml() : '') + panelHtml());
     manageTimer(snap);
     if (demo && (snap.canPlay || snap.canDouble || snap.canTribute)) setTimeout(demoStep, 350);
   }
@@ -457,6 +503,11 @@
     var act = t.closest('[data-act]'); if (!act) return; sfx('click');
     switch (act.dataset.act) {
       case 'quick': G.quickStart(selectedBase); break;
+      case 'more': panel = 'settings'; render(lastSnap); break;
+      case 'hist': panel = 'hist'; render(lastSnap); break;
+      case 'signin': doSign(); break;
+      case 'panel-close': panel = null; render(lastSnap); break;
+      case 'btnpos-reset': try { localStorage.removeItem('gd_btnpos'); } catch (e) {} toast('按钮组位置已复位'); panel = null; render(lastSnap); break;
       case 'shop-vip': shop = 'vip'; render(lastSnap); break;
       case 'shop-first': shop = 'first'; render(lastSnap); break;
       case 'shop-free': shop = 'free'; render(lastSnap); break;
@@ -498,16 +549,46 @@
     }
   });
   app.addEventListener('input', function (e) { var v = e.target.closest && e.target.closest('[data-vol]'); if (v) { var val = +v.value; if (typeof Sfx !== 'undefined' && Sfx && Sfx.setVolume) Sfx.setVolume(val / 100); try { localStorage.setItem('guandan_vol', val); } catch (er) {} } });
+  app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-theme-pick]'); if (!m) return; try { localStorage.setItem('gd_theme', m.dataset.themePick); } catch (er) {} applyTheme(); sfx('click'); render(lastSnap); });
+  // P2 按钮组拖拽：长按(300ms)桌中时钟后拖动整个操作按钮组，松手保存位置
+  var dragSt = null;
+  app.addEventListener('pointerdown', function (e) {
+    if (demo) return;
+    var clk = e.target.closest && e.target.closest('.center-actions .clock');
+    if (!clk) return;
+    var ca = clk.closest('.center-actions');
+    dragSt = { x0: e.clientX, y0: e.clientY, bx: btnPos ? btnPos.x : 0, by: btnPos ? btnPos.y : 0, ca: ca, pid: e.pointerId, active: false, nx: null,
+      hold: setTimeout(function () { if (dragSt) { dragSt.active = true; try { clk.setPointerCapture(dragSt.pid); } catch (er) {} } }, 300) };
+  });
+  app.addEventListener('pointermove', function (e) {
+    if (!dragSt || !dragSt.active || e.pointerId !== dragSt.pid) return;
+    dragSt.nx = dragSt.bx + (e.clientX - dragSt.x0); dragSt.ny = dragSt.by + (e.clientY - dragSt.y0);
+    if (dragSt.ca) dragSt.ca.style.transform = 'translate(' + dragSt.nx + 'px,' + dragSt.ny + 'px)';
+  });
+  function endDrag() {
+    if (!dragSt) return;
+    clearTimeout(dragSt.hold);
+    if (dragSt.active && dragSt.nx !== null) {
+      btnPos = { x: dragSt.nx, y: dragSt.ny };
+      try { localStorage.setItem('gd_btnpos', JSON.stringify(btnPos)); } catch (er) {}
+      toast('按钮组位置已保存 · 更多里可复位');
+    }
+    dragSt = null;
+  }
+  app.addEventListener('pointerup', endDrag);
+  app.addEventListener('pointercancel', endDrag);
   app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-mode]'); if (!m || !lastSnap || lastSnap.phase !== 'lobby') return; var mode = m.dataset.mode, cur = lastSnap.mode && lastSnap.mode.noShuffle; if (mode === 'classic') G.setNoShuffle(false); else if (mode === 'noshuffle') G.setNoShuffle(!cur); });
   app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-gold]'); if (!m || !lastSnap || lastSnap.phase !== 'lobby') return; sfx('click');
     if (m.dataset.gold === '1') G.setGoldMode(true); else if (m.dataset.gold === 'match') G.setMatchMode(true); else { G.setGoldMode(false); G.setMatchMode(false); } });
   app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-rounds]'); if (!m || !hasNet() || !Net.active || Net.started) return; Net.roundsChoice = +m.dataset.rounds; sfx('click'); render(); });
 
-  var UI = { render: render, onLobby: function () { selected.clear(); locks = []; hintIdx = -1; dealShown = false; }, onSettle: function () {} };
+  var UI = { render: render, onLobby: function () { selected.clear(); locks = []; hintIdx = -1; dealShown = false; panel = null; }, onSettle: function () {} };
   GLOBAL.GDRender = render;                 // net.js 用：推送服务器快照来渲染
   GLOBAL.GDToast = toast;                   // net.js 用：系统消息提示
   GLOBAL.GDSetBackend = function (b) { G = b; }; // net.js 用：把动作后端切到网络代理
   Game.init(UI);
+  applyTheme();
+  loadBtnPos();
   if (typeof Sfx !== 'undefined' && Sfx && Sfx.setVolume) Sfx.setVolume(vol() / 100);
   if (demo) G.quickStart(800);
 })();

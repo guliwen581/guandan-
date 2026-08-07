@@ -124,6 +124,32 @@ button:active { transform: scale(.93); }
 .watermark .wm-org { font-size: 39px; font-weight: 700; letter-spacing: 3px; margin-bottom: 4px; }
 .watermark .wm-title { font-size: 44px; font-weight: 900; letter-spacing: 8px; }
 
+/* P2 桌布主题（经典=默认蓝；现代=赌场绿；古风=红木；霞光=紫金）*/
+body[data-theme="modern"] { --felt-1: #2e7d4f; --felt-2: #1a5233; --felt-3: #0c2a1a; }
+body[data-theme="modern"] .sky { background:
+   radial-gradient(2px 2px at 25% 12%, #d8ffe966, transparent), radial-gradient(50% 40% at 80% 14%, #baffd818, transparent 60%); }
+body[data-theme="modern"] .mtn { background:
+   radial-gradient(30% 100% at 12% 100%, #07281a 60%, transparent 61%), radial-gradient(34% 100% at 42% 100%, #0b3a24 60%, transparent 61%),
+   radial-gradient(30% 100% at 72% 100%, #07281a 60%, transparent 61%); }
+body[data-theme="gufeng"] { --felt-1: #8a3b2b; --felt-2: #5e2418; --felt-3: #33110b; }
+body[data-theme="gufeng"] .sky { background:
+   radial-gradient(2px 2px at 30% 10%, #ffd9a066, transparent), radial-gradient(50% 40% at 20% 16%, #ffb06022, transparent 60%); }
+body[data-theme="gufeng"] .mtn { background:
+   radial-gradient(32% 100% at 16% 100%, #3a150c 60%, transparent 61%), radial-gradient(34% 100% at 50% 100%, #4a1c0e 60%, transparent 61%),
+   radial-gradient(30% 100% at 84% 100%, #3a150c 60%, transparent 61%); }
+body[data-theme="xiaguang"] { --felt-1: #7a4a8a; --felt-2: #4a2a5e; --felt-3: #251233; }
+body[data-theme="xiaguang"] .sky { background:
+   radial-gradient(2px 2px at 60% 12%, #ffd0f066, transparent), radial-gradient(60% 45% at 50% 8%, #ff9a5a33, transparent 60%),
+   radial-gradient(50% 40% at 85% 16%, #c06aff22, transparent 60%); }
+body[data-theme="xiaguang"] .mtn { background:
+   radial-gradient(32% 100% at 18% 100%, #2a1238 60%, transparent 61%), radial-gradient(36% 100% at 55% 100%, #3a1a4a 60%, transparent 61%),
+   radial-gradient(30% 100% at 86% 100%, #2a1238 60%, transparent 61%); }
+/* 主题选择器 & 按钮组拖拽 */
+.thsws { display: inline-flex; gap: 6px; }
+.thsw { padding: 4px 10px; border-radius: 8px; background: #ffffff1c; color: #cfe0ff; font-size: 12px; cursor: pointer; transition: .12s; }
+.thsw.on { background: linear-gradient(180deg, var(--gold-2), var(--gold-d)); color: #6b3b00; font-weight: 800; }
+.center-actions .clock { cursor: grab; }
+
 /* 顶部信息（玻璃胶囊） */
 .hud { position: absolute; top: 12px; left: 14px; display: flex; gap: 8px; z-index: 6; }
 .hud span { background: var(--panel); border: 1px solid var(--glass-bd); border-radius: 11px; padding: 6px 12px; font-size: 13px;
