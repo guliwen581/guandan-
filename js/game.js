@@ -96,7 +96,7 @@
       mode: { noShuffle: lobbyMode.noShuffle, gold: lobbyMode.gold, rounds: lobbyMode.rounds }, lastDeck: null,
       hands: [[], [], [], []], finished: [false, false, false, false], finishOrder: [],
       top: null, passCount: 0, turn: 0, doubled: [null, null, null, null], doubleTurn: 0,
-      passed: [false, false, false, false], discarded: [], discSuits: [], lastResult: null,
+      passed: [false, false, false, false], discarded: [], discSuits: [], replay: [], lastResult: null,
       coins: (persisted.coins && persisted.coins.length === 4) ? persisted.coins.slice() : [10000, 10000, 10000, 10000]
     };
   }
@@ -170,7 +170,13 @@
         winTeam: lr.winTeam === vt ? 0 : 1, combo: lr.combo, comboName: lr.comboName, delta: lr.delta,
         rankMult: lr.rankMult,
         newLevel: lr.newLevel, matchOver: lr.matchOver,
-        matchWinner: lr.matchWinner == null ? null : (lr.matchWinner === vt ? 0 : 1)
+        matchWinner: lr.matchWinner == null ? null : (lr.matchWinner === vt ? 0 : 1),
+        replay: lr.replay ? lr.replay.map(function (ev) {   // P1-3 回放事件：座位换算到 viewer 视角
+          var e = {}; for (var k in ev) e[k] = ev[k];
+          if (e.seat != null) e.seat = rot(e.seat);
+          if (e.from != null) { e.from = rot(e.from); e.to = rot(e.to); }
+          return e;
+        }) : null
       };
     }
     return {
@@ -233,7 +239,7 @@
   function startRound() {
     S.roundNo++;
     S.level = S.mode.gold ? '2' : S.teamLevel[S.dealerTeam];  // 金币场固定级牌2（对标APK赛制"固定2为级牌"）
-    S.mult = 1; S.finished = [false, false, false, false]; S.finishOrder = [];
+    S.mult = 1; S.finished = [false, false, false, false]; S.finishOrder = []; S.replay = [];
     S.top = null; S.passCount = 0; S.doubled = [null, null, null, null]; S.doubleTurn = 0;
     S.passed = [false, false, false, false]; S.discarded = []; S.discSuits = []; S.lastResult = null; S.tribute = null;
     deal();
@@ -294,6 +300,7 @@
   function doGive(gr, card) {
     S.hands[gr.giver] = S.hands[gr.giver].filter(function (c) { return c.id !== card.id; });
     S.hands[gr.receiver].push(card); gr.held = card; gr.awaitGive = false;
+    if (S.replay) S.replay.push({ t: 'give', from: gr.giver, to: gr.receiver, card: { s: card.s, r: card.r } });
   }
   // 进贡全部完成后：定领头 + 还贡（真人收贡者挂起等选，AI 自动还最小合规牌）
   function finishTributeGives(fromGiveAction) {
@@ -302,7 +309,7 @@
     else S.firstLeader = (cmp(pairs[0].held) === cmp(pairs[1].held)) ? (S.prevResult.finishOrder[0] + 1) % 4 : pairs[0].giver; // 双贡：进大牌者先出，同大=头游下家
     pairs.forEach(function (gr) {                                       // 还贡：真人等，AI 自动
       if (isHuman(gr.receiver)) { t.pending.push(gr.receiver); t.pendingKinds[gr.receiver] = 'back'; S.phase = 'tribute'; }
-      else { var back = returnLow(S.hands[gr.receiver]); S.hands[gr.receiver] = S.hands[gr.receiver].filter(function (c) { return c.id !== back.id; }); S.hands[gr.giver].push(back); gr.back = back; }
+      else { var back = returnLow(S.hands[gr.receiver]); S.hands[gr.receiver] = S.hands[gr.receiver].filter(function (c) { return c.id !== back.id; }); S.hands[gr.giver].push(back); gr.back = back; S.replay.push({ t: 'back', from: gr.receiver, to: gr.giver, card: { s: back.s, r: back.r } }); }
     });
     if (fromGiveAction && t.pending.length === 0) { S.phase = 'double'; S.doubleTurn = 0; schedule(); }  // 无人待还贡：推进到加倍
   }
@@ -332,6 +339,7 @@
     if (S.hands[seat].filter(eligibleReturn).length && !eligibleReturn(card)) return false; // 有合规牌时必须还<=10 且非级牌
     S.hands[seat] = S.hands[seat].filter(function (c) { return c.id !== id; });
     S.hands[p.giver].push(card); p.back = card;
+    if (S.replay) S.replay.push({ t: 'back', from: seat, to: p.giver, card: { s: card.s, r: card.r } });
     S.tribute.pending = S.tribute.pending.filter(function (s) { return s !== seat; });
     if (S.tribute.pending.length === 0) { S.phase = 'double'; S.doubleTurn = 0; schedule(); }
     else render();
@@ -352,6 +360,7 @@
   function doubleDecision(seat, yes) {
     if (S.phase !== 'double') return;
     S.doubled[seat] = !!yes;
+    S.replay.push({ t: 'dbl', seat: seat, yes: !!yes });
     if (yes) S.mult = S.mode.gold ? Math.min(S.mult * 2, 50000) : Math.min(S.mult * 2, 64);
     S.doubleTurn++;
     if (S.doubleTurn >= 4) { S.phase = 'play'; S.turn = S.firstLeader; schedule(); }
@@ -377,6 +386,7 @@
     S.top = { play: play, owner: seat }; S.passCount = 0;
     S.passed = [false, false, false, false];
     play.cards.forEach(function (c) { S.discarded.push(c.r); S.discSuits.push(c.s); });
+    S.replay.push({ t: 'play', seat: seat, type: play.type, cards: play.cards.map(function (c) { return { s: c.s, r: c.r, asRank: c.asRank, asSuit: c.asSuit }; }) });  // P1-3 回放事件
     if (Rules.isBomb(play)) S.mult = S.mode.gold ? Math.min(S.mult * bombMultFor(play), 50000) : Math.min(S.mult * 2, 64);
     if (S.hands[seat].length === 0) { S.finished[seat] = true; S.finishOrder.push(seat); }
     if (roundOver()) { endRound(); return; }
@@ -384,6 +394,7 @@
   }
   function applyPass(seat) {
     S.passCount++; S.passed[seat] = true;
+    S.replay.push({ t: 'pass', seat: seat });
     var needed = aliveCount() - (S.finished[S.top.owner] ? 0 : 1);
     if (S.passCount >= needed) {
       var w = S.top.owner; S.top = null; S.passCount = 0; S.passed = [false, false, false, false];
@@ -469,7 +480,8 @@
       S.matchWinner = (S.coins[0] + S.coins[2]) >= (S.coins[1] + S.coins[3]) ? 0 : 1;
     }
 
-    S.lastResult = { finishOrder: S.finishOrder.slice(), pos: pos, winTeam: winTeam, combo: combo, comboName: comboName, rankMult: rankMult, delta: delta, deltas: deltas, newLevel: adv.win ? null : (S.mode.gold ? null : adv.level), matchOver: S.matchOver, matchWinner: S.matchWinner };
+    S.replay.push({ t: 'settle', combo: comboName });
+    S.lastResult = { finishOrder: S.finishOrder.slice(), pos: pos, winTeam: winTeam, combo: combo, comboName: comboName, rankMult: rankMult, delta: delta, deltas: deltas, newLevel: adv.win ? null : (S.mode.gold ? null : adv.level), matchOver: S.matchOver, matchWinner: S.matchWinner, replay: S.replay.slice() };
     save();
     render();
     if (UI && UI.onSettle) UI.onSettle(S.lastResult);

@@ -286,7 +286,31 @@
     var rows = r.finishOrder.map(function (sid, i) { var seat = lastSnap.seats[sid], w = seat.team === r.winTeam, d = r.deltas[sid]; return '<div class="row ' + (w ? 'win' : '') + '" style="animation-delay:' + (i * 0.08) + 's"><span class="fc">' + faceSVG(sid) + '</span><span class="nm">' + esc(seat.name) + (sid === 0 ? '（你）' : '') + '</span><span class="rl">' + Game.RANK_LABEL[r.pos[sid] - 1] + '</span><span class="dl ' + (d >= 0 ? 'plus' : 'minus') + '">' + (d >= 0 ? '+' : '') + d + '</span></div>'; }).join('');
     var extra = r.matchOver ? (win ? ' · 打通A，赢得整局！' : ' · 对方打通A') : (r.newLevel ? ' · 我方升至' + r.newLevel : '');
     if (lastSnap.mode && lastSnap.mode.gold) extra = ' · 底分' + lastSnap.base + ' × 倍数' + lastSnap.mult + ' × 排名' + (r.rankMult || 1) + '（双下4/一三游2/一四游1）';
-    return '<div class="settle">' + (win ? confettiHtml() : '') + '<div class="box"><h2>' + title + '</h2><div class="combo">' + (win ? '我方胜 🎉' : '对方胜') + ' · ' + r.comboName + ' · 倍数×' + lastSnap.mult + extra + '</div>' + rows + '<div class="btns"><button class="again" data-act="again">' + (r.matchOver ? '新比赛' : '再来一局') + '</button><button class="back2" data-act="lobby">返回大厅</button></div></div></div>';
+    return '<div class="settle">' + (win ? confettiHtml() : '') + '<div class="box"><h2>' + title + '</h2><div class="combo">' + (win ? '我方胜 🎉' : '对方胜') + ' · ' + r.comboName + ' · 倍数×' + lastSnap.mult + extra + '</div>' + rows + '<div class="btns"><button class="again" data-act="again">' + (r.matchOver ? '新比赛' : '再来一局') + '</button>' + (r.replay ? '<button class="back2" data-act="replay">🎬 回放本局</button>' : '') + '<button class="back2" data-act="lobby">返回大厅</button></div></div></div>';
+  }
+  // P1-3 回放：按手逐步还原本局公共事件
+  var replayIdx = -1;
+  function replayEvText(ev) {
+    if (!lastSnap) return '';
+    function nm(s) { return lastSnap.seats[s] ? esc(lastSnap.seats[s].name) : '?'; }
+    if (ev.t === 'dbl') return nm(ev.seat) + (ev.yes ? ' 加倍' : ' 不加倍');
+    if (ev.t === 'give') return nm(ev.from) + ' 向 ' + nm(ev.to) + ' 进贡';
+    if (ev.t === 'back') return nm(ev.from) + ' 还贡给 ' + nm(ev.to);
+    if (ev.t === 'pass') return nm(ev.seat) + ' 不出';
+    if (ev.t === 'play') return nm(ev.seat) + ' 出 ' + (Rules.TYPE_NAME[ev.type] || ev.type);
+    if (ev.t === 'settle') return '本局结算：' + (ev.combo || '');
+    return '';
+  }
+  function replayHtml() {
+    var r = lastSnap && lastSnap.lastResult;
+    if (!r || !r.replay || !r.replay.length) return '';
+    if (replayIdx < 0) replayIdx = 0; if (replayIdx >= r.replay.length) replayIdx = r.replay.length - 1;
+    var ev = r.replay[replayIdx];
+    var body = '<div class="rpev">' + replayEvText(ev) + '</div>';
+    if (ev.t === 'play' && ev.cards) body += '<div class="rpcards">' + ev.cards.map(function (c) { return cardHtml(c, '', false, lastSnap.level); }).join('') + '</div>';
+    else if ((ev.t === 'give' || ev.t === 'back') && ev.card) body += '<div class="rpcards">' + cardHtml(ev.card, '', false, lastSnap.level) + '</div>';
+    return '<div class="modal"><div class="mbox rpbox"><h3>🎬 回放本局</h3><div class="rpprog">' + (replayIdx + 1) + ' / ' + r.replay.length + ' 手</div>' + body +
+      '<div class="mbtns"><button class="mclose" data-act="rp-prev"' + (replayIdx === 0 ? ' disabled' : '') + '>‹ 上一手</button><button class="mclose" data-act="rp-next"' + (replayIdx >= r.replay.length - 1 ? ' disabled' : '') + '>下一手 ›</button><button class="mclose" data-act="rp-close">关闭</button></div></div></div>';
   }
 
   function diffSfx(prev, snap) {
@@ -308,7 +332,7 @@
     if (snap.phase === 'play' && !dealShown) { dealShown = true; sfx('deal'); }
     diffSfx(prev, snap); lastSnap = snap;
     if (typeof Voice !== 'undefined' && Voice) Voice.sync(prev, snap);   // 人声解说（边沿触发，不重复）
-    app.innerHTML = snap.phase === 'lobby' ? lobbyHtml(snap) : (tableHtml(snap) + (snap.phase === 'settle' && snap.lastResult ? settleHtml(snap.lastResult) : ''));
+    app.innerHTML = snap.phase === 'lobby' ? lobbyHtml(snap) : (tableHtml(snap) + (snap.phase === 'settle' && snap.lastResult ? settleHtml(snap.lastResult) : '') + (replayIdx >= 0 ? replayHtml() : ''));
     manageTimer(snap);
     if (demo && (snap.canPlay || snap.canDouble || snap.canTribute)) setTimeout(demoStep, 350);
   }
@@ -449,8 +473,12 @@
       case 'mute': if (typeof Sfx !== 'undefined' && Sfx) Sfx.toggle(); render(lastSnap); break;
       case 'dbl-yes': sfx('double'); G.humanDouble(true); break;
       case 'dbl-no': G.humanDouble(false); break;
-      case 'again': selected.clear(); locks = []; if (lastSnap && lastSnap.matchOver) G.quickStart(selectedBase); else G.nextRound(); break;
-      case 'lobby': selected.clear(); locks = []; G.toLobby(); break;
+      case 'replay': replayIdx = 0; render(lastSnap); break;
+      case 'rp-prev': if (replayIdx > 0) replayIdx--; render(lastSnap); break;
+      case 'rp-next': replayIdx++; render(lastSnap); break;
+      case 'rp-close': replayIdx = -1; render(lastSnap); break;
+      case 'again': selected.clear(); locks = []; replayIdx = -1; if (lastSnap && lastSnap.matchOver) G.quickStart(selectedBase); else G.nextRound(); break;
+      case 'lobby': selected.clear(); locks = []; replayIdx = -1; G.toLobby(); break;
       case 'online': if (hasNet()) Net.enterOnline(); break;
       case 'o-create': if (hasNet()) { var nm = app.querySelector('#o-name'); Net.createRoom(nm ? nm.value : ''); } break;
       case 'o-join': if (hasNet()) { var nm2 = app.querySelector('#o-name'); var cd = app.querySelector('#o-code'); Net.joinRoom(cd ? cd.value : '', nm2 ? nm2.value : ''); } break;

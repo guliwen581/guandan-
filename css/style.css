@@ -446,6 +446,12 @@ button:active { transform: scale(.93); }
 .modal .mbtns button { flex: 1; padding: 12px; border-radius: 13px; font-weight: 800; font-size: 15px; }
 .modal .mbuy { background: linear-gradient(180deg, var(--gold-2), var(--gold-d)); color: #6b3b00; }
 .modal .mclose { background: linear-gradient(180deg, #aab6cb, #5c6679); }
+/* P1-3 回放弹窗 */
+.modal .rpbox { width: 460px; }
+.modal .rpprog { text-align: center; color: #9fb6e0; font-size: 13px; margin: 2px 0 10px; letter-spacing: 1px; }
+.modal .rpev { text-align: center; color: #fff; font-size: 17px; font-weight: 700; min-height: 24px; margin-bottom: 12px; }
+.modal .rpcards { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; min-height: 84px; align-items: center; }
+.modal .rpcards .card { transform: none !important; }
 .vip { display: inline-block; margin-left: 4px; font-size: 10px; font-weight: 900; color: #6b3b00; background: linear-gradient(180deg, var(--gold-2), var(--gold-d)); border-radius: 6px; padding: 1px 5px; vertical-align: middle; }
 
 /* 全局状态 toast */
