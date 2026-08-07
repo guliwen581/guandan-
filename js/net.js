@@ -36,9 +36,14 @@
     if (!code) { Net.lastError = '请输入房间号'; render(); return; }
     Net._connectAndJoin(code, name, 800, Net._lobbyGold(), 0);
   };
+  Net.spectateRoom = function (code) {   // P2 观战：加入已存在房间只读旁观
+    code = String(code || '').trim().toUpperCase();
+    if (!code) { Net.lastError = '请输入要观战的房间号'; render(); return; }
+    Net._connectAndJoin(code, Net.name, 800, false, 0, true);
+  };
   Net._lobbyGold = function () { try { var sn = Game.snapshot(); return !!(sn && sn.mode && sn.mode.gold); } catch (e) { return false; } };  // 跟随大厅选择；加入已有房间时由房主设置决定
 
-  Net._connectAndJoin = function (room, name, base, gold, rounds) {
+  Net._connectAndJoin = function (room, name, base, gold, rounds, spectate) {
     Net.name = (name || '').trim().slice(0, 8) || defaultName();
     try { localStorage.setItem('gd_name', Net.name); } catch (e) {}
     Net.lastError = null;
@@ -47,7 +52,7 @@
     try { ws = new WebSocket(wsUrl()); }
     catch (e) { Net.lastError = '无法连接服务器'; render(); return; }
     Net.ws = ws;
-    ws.onopen = function () { ws.send(JSON.stringify({ type: 'join', room: room, name: Net.name, base: base, gold: !!gold, rounds: rounds || 0 })); };
+    ws.onopen = function () { ws.send(JSON.stringify({ type: 'join', room: room, name: Net.name, base: base, gold: !!gold, rounds: rounds || 0, spectate: !!spectate })); };
     ws.onmessage = function (ev) { Net._onMessage(ev.data); };
     ws.onerror = function () { Net.lastError = '连接出错：联机请用 node server/main.js 启动的地址打开页面'; Net.started = false; render(); };
     ws.onclose = function () {
@@ -64,6 +69,7 @@
     else if (msg.type === 'room') { Net.roomInfo = msg; Net.started = false; render(); }
     else if (msg.type === 'snapshot') {
       Net.lastSnap = msg.snap; Net.started = true;
+      if (msg.watch || Net.seat === -1) { Net.lastSnap.canPlay = false; Net.lastSnap.canDouble = false; Net.lastSnap.canTribute = false; }  // 观战只读
       if (GLOBAL.GDSetBackend) GLOBAL.GDSetBackend(Net.backend);
       render();
     } else if (msg.type === 'chat') {

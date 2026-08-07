@@ -46,6 +46,7 @@ function Room(code, base, gold, rounds) {
   this.gold = !!gold;   // 金币场（P0-4）：建房时确定，整场有效
   this.rounds = (rounds === 4 || rounds === 8 || rounds === 16) ? rounds : 0;  // 好友房限定局数（P1-1），0=不限
   this.seats = [null, null, null, null]; // {conn, name}
+  this.watchers = [];                    // 观战连接列表（只读快照，seat=-1）
   this.started = false;
   this.game = createGame();
   if (process.env.FAST) this.game.sync = true; // 测试用：AI 同步秒出
@@ -68,6 +69,9 @@ Room.prototype.broadcast = function () {
   for (var s = 0; s < 4; s++) {
     var o = this.seats[s];
     if (o && o.conn) o.conn.send({ type: 'snapshot', seq: this.seq, snap: this.game.snapshotFor(s) });
+  }
+  for (var w = 0; w < this.watchers.length; w++) {   // 观战位：0号位视角只读快照
+    try { this.watchers[w].send({ type: 'snapshot', seq: this.seq, snap: this.game.snapshotFor(0), watch: true }); } catch (e) {}
   }
   this.scheduleTimeouts();   // P0-2 服务器权威计时：每个待行动真人 20s，超时引擎代打
 };
@@ -99,6 +103,10 @@ Room.prototype.roomInfo = function () {
 Room.prototype.broadcastRoom = function () {
   var info = this.roomInfo();
   for (var s = 0; s < 4; s++) { var o = this.seats[s]; if (o && o.conn) o.conn.send(info); }
+  for (var w = 0; w < this.watchers.length; w++) { try { this.watchers[w].send(info); } catch (e) {} }
+};
+Room.prototype.removeWatcher = function (conn) {
+  this.watchers = this.watchers.filter(function (c) { return c !== conn; });
 };
 Room.prototype.freeSeat = function () { for (var s = 0; s < 4; s++) if (!this.seats[s]) return s; return -1; };
 Room.prototype.start = function () {
@@ -126,14 +134,16 @@ Room.prototype.onLeave = function (seat) {
   if (!this.seats[seat]) return;
   this.seats[seat] = null;
   this.clearTimeouts();    // 座位变化后由下一次 broadcast 重建计时
+  var self = this;
+  function notifyWatchersEnd() { self.watchers.forEach(function (c) { try { c.send({ type: 'dissolved' }); } catch (e) {} }); self.watchers = []; }
   if (this.started) {
     this.game.setHumanSeats(this.humanSeats()); // 离开者的位交给 AI 续玩
     this.game.resume();
     this.broadcast();
-    if (!this.humanSeats().length) { delete rooms[this.code]; } // 全走了，回收房间
+    if (!this.humanSeats().length) { notifyWatchersEnd(); delete rooms[this.code]; } // 全走了，回收房间
   } else {
     this.broadcastRoom();
-    if (!this.humanSeats().length) delete rooms[this.code];
+    if (!this.humanSeats().length) { notifyWatchersEnd(); delete rooms[this.code]; }
   }
 };
 
@@ -143,13 +153,23 @@ function genCode() {
 }
 
 function handleConn(conn) {
-  var room = null, seat = -1;
+  var room = null, seat = -1, watching = false;
   conn.onMessage = function (text) {
     var msg; try { msg = JSON.parse(text); } catch (e) { return; }
     if (msg.type === 'join') {
       if (room) return; // 一个连接只进一个房间
       var code = msg.room === 'new' ? genCode() : String(msg.room || '').toUpperCase();
       if (!/^[0-9A-Z]{3,8}$/.test(code)) { conn.send({ type: 'error', msg: '房间号无效' }); return; }
+      if (msg.spectate) {   // 观战：只进已存在的房间，只读快照（P2 观战）
+        if (!rooms[code]) { conn.send({ type: 'error', msg: '房间不存在' }); return; }
+        room = rooms[code]; watching = true; seat = -1;
+        if (room.watchers.length >= 50) { conn.send({ type: 'error', msg: '观战人数已满' }); room = null; watching = false; return; }
+        room.watchers.push(conn);
+        conn.send({ type: 'joined', room: room.code, seat: -1 });
+        room.broadcastRoom();
+        if (room.started) room.broadcast();   // 已在打：立即推一帧当前局面
+        return;
+      }
       if (!rooms[code]) {
         if (Object.keys(rooms).length >= MAX_ROOMS) { conn.send({ type: 'error', msg: '服务器房间已满' }); return; }
         rooms[code] = new Room(code, msg.base || 800, !!msg.gold, msg.rounds);
@@ -162,25 +182,31 @@ function handleConn(conn) {
       conn.send({ type: 'joined', room: room.code, seat: seat });
       room.broadcastRoom();
     } else if (msg.type === 'start') {
-      if (room) room.start();
+      if (room && seat >= 0) room.start();   // 观战者不能开局
     } else if (msg.type === 'act') {
-      if (room && seat >= 0) room.game.act(seat, msg.action || {});
+      if (room && seat >= 0) room.game.act(seat, msg.action || {});   // 观战者不能操作
     } else if (msg.type === 'next') {
-      if (room) room.next();
+      if (room && seat >= 0) room.next();
     } else if (msg.type === 'dissolve') {
       if (room && seat === 0) {   // 仅房主(0号位)可解散（P1-1）
         room.clearTimeouts();
         for (var ds = 0; ds < 4; ds++) { var dso = room.seats[ds]; if (dso && dso.conn) dso.conn.send({ type: 'dissolved' }); }
+        for (var dw = 0; dw < room.watchers.length; dw++) { try { room.watchers[dw].send({ type: 'dissolved' }); } catch (e) {} }
         delete rooms[room.code];
-        room = null; seat = -1;
+        room = null; seat = -1; watching = false;
       }
     } else if (msg.type === 'chat') {
-      if (!room) return;
+      if (!room || seat < 0) return;   // 观战者禁言
       var m = { type: 'chat', seat: seat, text: String(msg.text || '').slice(0, 60) };
       for (var s = 0; s < 4; s++) { var o = room.seats[s]; if (o && o.conn) o.conn.send(m); }
+    } else if (msg.type === 'leave' && watching && room) {
+      room.removeWatcher(conn); room = null; watching = false;
     }
   };
-  conn.onClose = function () { if (room && seat >= 0) room.onLeave(seat); };
+  conn.onClose = function () {
+    if (room && watching) room.removeWatcher(conn);
+    else if (room && seat >= 0) room.onLeave(seat);
+  };
 }
 
 // ---- 静态文件 ----

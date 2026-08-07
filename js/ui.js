@@ -144,6 +144,15 @@
     panel = null; render(lastSnap);
   }
   function panelHtml() {
+    if (panel === 'privacy') {
+      return '<div class="modal" onclick="if(event.target===this&&window.GDPanelClose)window.GDPanelClose()"><div class="mbox"><h3>隐私政策与用户协议</h3><div class="msub">免费无内购网页版 · 请仔细阅读</div>' +
+        '<div class="pptext">1. 本游戏为免费在线网页游戏，不设账号体系，不提供任何付费、虚拟货币兑换或抽奖服务。<br><br>' +
+        '2. 我们仅在您的浏览器本地存储游戏进度、设置与战绩（localStorage），不收集、不上传任何个人信息。联机对战仅传输昵称、出牌动作等对局必需数据。<br><br>' +
+        '3. 请勿沉迷。建议未成年人合理安排游戏时间，在监护人指导下使用。<br><br>' +
+        '4. 禁止利用本游戏进行任何形式的赌博或变相赌博活动。<br><br>' +
+        '5. 本游戏玩法基于掼蛋通用规则独立实现，界面与素材均为原创，与其他掼蛋产品无关。</div>' +
+        '<div class="mbtns"><button class="mclose" data-act="panel-close">我知道了</button></div></div></div>';
+    }
     if (panel === 'mail') {
       var cl = mailClaimed();
       var rows = mailList().map(function (m) {
@@ -247,7 +256,7 @@
     var goldOn = snap && snap.mode && snap.mode.gold, matchOn = snap && snap.mode && snap.mode.match;
     var noneOn = !goldOn && !matchOn;
     var goldtoggle = '<div class="goldtoggle"><span data-gold=""' + (noneOn ? ' class="on"' : '') + '>🏆 晋级场<div class="gt-sub">打2→A 升级赛制</div></span><span data-gold="1"' + (goldOn ? ' class="on"' : '') + '>🪙 金币场<div class="gt-sub">无限局·底分×倍数结算</div></span><span data-gold="match"' + (matchOn ? ' class="on"' : '') + '>🏟️ 积分赛<div class="gt-sub">4局·积分排名决胜</div></span></div>';
-    return '<div class="lobby"><div class="clouds"></div><div class="deco"></div><div class="topbar"><div class="back">‹ 掼蛋经典' + (vip() ? '<i class="vip">VIP</i>' : '') + ' <i class="vip" data-act="season">⭐Lv.' + seasonInfo().lv + '</i></div><div class="currency"><span>🪙 <b>' + coins + '</b></span><span>💎 <b>' + gem() + '</b></span></div><div class="shop"><span data-act="signin">每日签到</span><span data-act="task">每日任务</span><span data-act="mail">邮件</span><span data-act="hist">战绩</span><span data-act="shop-free">免费福利</span></div></div><div class="lobby-body">' + goldtoggle + '<ul class="modes">' + modes + '</ul><div class="rooms">' + rooms + '</div></div><button class="quickstart" data-act="quick">快速开始<div class="sub">' + (matchOn ? '积分赛' : goldOn ? '金币场' : '经典玩法') + '·' + selRoom.n + (ns ? '·不洗牌' : '') + '</div></button><button class="quickstart onlinebtn" data-act="online">🌐 联机对战<div class="sub">创建/加入房间·和朋友同屏</div></button></div>' + (shop ? shopHtml() : '') + panelHtml();
+    return '<div class="lobby"><div class="clouds"></div><div class="deco"></div><div class="topbar"><div class="back">‹ 掼蛋经典' + (vip() ? '<i class="vip">VIP</i>' : '') + ' <i class="vip" data-act="season">⭐Lv.' + seasonInfo().lv + '</i></div><div class="currency"><span>🪙 <b>' + coins + '</b></span><span>💎 <b>' + gem() + '</b></span></div><div class="shop"><span data-act="signin">每日签到</span><span data-act="task">每日任务</span><span data-act="mail">邮件</span><span data-act="hist">战绩</span><span data-act="shop-free">免费福利</span></div></div><div class="lobby-body">' + goldtoggle + '<ul class="modes">' + modes + '</ul><div class="rooms">' + rooms + '</div></div><button class="quickstart" data-act="quick">快速开始<div class="sub">' + (matchOn ? '积分赛' : goldOn ? '金币场' : '经典玩法') + '·' + selRoom.n + (ns ? '·不洗牌' : '') + '</div></button><button class="quickstart onlinebtn" data-act="online">🌐 联机对战<div class="sub">创建/加入房间·和朋友同屏</div></button><div class="footlinks"><span data-act="privacy">隐私政策与用户协议</span> · <span data-act="privacy">健康游戏，禁止赌博</span></div></div>' + (shop ? shopHtml() : '') + panelHtml();
   }
 
   function onlineEntryHtml() {
@@ -260,8 +269,8 @@
     return '<div class="online"><div class="clouds"></div><div class="obox"><h2>🌐 联机对战</h2>' +
       '<div class="orow"><label>昵称</label><input id="o-name" maxlength="8" value="' + esc(name) + '"/></div>' + roundsel +
       '<button class="obtn primary" data-act="o-create">创建房间</button>' +
-      '<div class="orow join"><input id="o-code" maxlength="6" placeholder="输入房间号"/><button class="obtn" data-act="o-join">加入</button></div>' +
-      '<p class="otip">把房间号发给朋友，4 人入座即可开打，空位由电脑补。</p>' + err +
+      '<div class="orow join"><input id="o-code" maxlength="6" placeholder="输入房间号"/><button class="obtn" data-act="o-join">加入</button><button class="obtn" data-act="o-watch">👁观战</button></div>' +
+      '<p class="otip">把房间号发给朋友，4 人入座即可开打，空位由电脑补；输入他人房间号可观战。</p>' + err +
       '<button class="obtn ghost" data-act="o-leave">返回大厅</button>' +
       '</div></div>';
   }
@@ -388,7 +397,7 @@
       counterPanel = '<div class="counter"><h4>记牌器<span>剩余张数</span></h4><div class="grid">' + cells + '</div>' + lamps + '</div>'; }
 
     return '<div class="table"><div class="sky"></div><div class="mtn"></div><div class="pag l">🏯</div><div class="pag r">🏯</div>' +
-      '<div class="hud"><span>本局打 <b>' + esc(level) + '</b></span><span>倍数 <b>' + snap.mult + '</b></span><span>第' + snap.roundNo + (snap.mode && snap.mode.rounds ? '/' + snap.mode.rounds : '') + '局</span></div>' +
+      '<div class="hud"><span>本局打 <b>' + esc(level) + '</b></span><span>倍数 <b>' + snap.mult + '</b></span><span>第' + snap.roundNo + (snap.mode && snap.mode.rounds ? '/' + snap.mode.rounds : '') + '局</span>' + (hasNet() && Net.active && Net.seat === -1 ? '<span class="watchtag">👁 观战中</span>' : '') + '</div>' +
       (snap.mode && snap.mode.match
         ? '<div class="tlv"><i class="t0">🏟️ 积分赛</i><i class="t1">我方 ' + (snap.seats[0].score + snap.seats[2].score) + ' : ' + (snap.seats[1].score + snap.seats[3].score) + ' 对方</i></div>'
         : snap.mode && snap.mode.gold
@@ -581,6 +590,7 @@
       case 'hist': panel = 'hist'; render(lastSnap); break;
       case 'task': panel = 'task'; render(lastSnap); break;
       case 'mail': panel = 'mail'; render(lastSnap); break;
+      case 'privacy': panel = 'privacy'; render(lastSnap); break;
       case 'season': panel = 'season'; render(lastSnap); break;
       case 'signin': doSign(); break;
       case 'panel-close': panel = null; render(lastSnap); break;
@@ -620,6 +630,7 @@
       case 'online': if (hasNet()) Net.enterOnline(); break;
       case 'o-create': if (hasNet()) { var nm = app.querySelector('#o-name'); Net.createRoom(nm ? nm.value : ''); } break;
       case 'o-join': if (hasNet()) { var nm2 = app.querySelector('#o-name'); var cd = app.querySelector('#o-code'); Net.joinRoom(cd ? cd.value : '', nm2 ? nm2.value : ''); } break;
+      case 'o-watch': if (hasNet()) { var cdw = app.querySelector('#o-code'); Net.spectateRoom(cdw ? cdw.value : ''); } break;
       case 'o-start': if (hasNet()) Net.startGame(); break;
       case 'o-dissolve': if (hasNet()) Net.dissolve(); break;
       case 'o-leave': if (hasNet()) Net.leaveRoom(); break;
