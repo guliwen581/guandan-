@@ -107,6 +107,22 @@
     } catch (e) {}
     addGem(30); toast('任务完成 · 💎+30'); render(lastSnap);
   }
+  // ---- P2 邮件（本地模板邮件 + 一次性附件领取）----
+  function mailList() {
+    var si = seasonInfo();
+    return [
+      { id: 'welcome', icon: '📮', t: '欢迎来到掼蛋经典', body: '免费无内购网页版：完整规则引擎、联机好友房、回放与记牌器。祝把把头游！', gem: 66 },
+      { id: 'season', icon: '🏆', t: '赛季奖励', body: '当前赛季等级 Lv.' + si.lv + '（经验 ' + si.xp + '）。继续对局提升等级，解锁更多桌布主题。', gem: si.lv * 20 }
+    ];
+  }
+  function mailClaimed() { try { return JSON.parse(localStorage.getItem('gd_mail_claim') || '{}'); } catch (e) { return {}; } }
+  function mailClaim(id) {
+    var m = mailList().filter(function (x) { return x.id === id; })[0];
+    var cl = mailClaimed();
+    if (!m || cl[id]) { toast('该邮件已领取'); return; }
+    cl[id] = 1; try { localStorage.setItem('gd_mail_claim', JSON.stringify(cl)); } catch (e) {}
+    addGem(m.gem); toast('附件已领取 · 💎+' + m.gem); render(lastSnap);
+  }
   function histList() { try { return JSON.parse(localStorage.getItem('gd_hist') || '[]'); } catch (e) { return []; } }
   function histSave(snap) {
     if (!snap.lastResult) return;
@@ -128,6 +144,14 @@
     panel = null; render(lastSnap);
   }
   function panelHtml() {
+    if (panel === 'mail') {
+      var cl = mailClaimed();
+      var rows = mailList().map(function (m) {
+        var btn = cl[m.id] ? '<span class="pp">已领</span>' : '<span class="pp claim" data-mail-claim="' + m.id + '">领💎' + m.gem + '</span>';
+        return '<div class="plan"><div class="pi">' + m.icon + '</div><div class="pt"><b>' + m.t + '</b><span>' + m.body + '</span></div>' + btn + '</div>';
+      }).join('');
+      return '<div class="modal" onclick="if(event.target===this&&window.GDPanelClose)window.GDPanelClose()"><div class="mbox"><h3>📮 邮件</h3><div class="msub">附件仅可领取一次</div>' + rows + '<div class="mbtns"><button class="mclose" data-act="panel-close">关闭</button></div></div></div>';
+    }
     if (panel === 'task') {
       var ts = taskState();
       var rows = ts.map(function (t) {
@@ -223,7 +247,7 @@
     var goldOn = snap && snap.mode && snap.mode.gold, matchOn = snap && snap.mode && snap.mode.match;
     var noneOn = !goldOn && !matchOn;
     var goldtoggle = '<div class="goldtoggle"><span data-gold=""' + (noneOn ? ' class="on"' : '') + '>🏆 晋级场<div class="gt-sub">打2→A 升级赛制</div></span><span data-gold="1"' + (goldOn ? ' class="on"' : '') + '>🪙 金币场<div class="gt-sub">无限局·底分×倍数结算</div></span><span data-gold="match"' + (matchOn ? ' class="on"' : '') + '>🏟️ 积分赛<div class="gt-sub">4局·积分排名决胜</div></span></div>';
-    return '<div class="lobby"><div class="clouds"></div><div class="deco"></div><div class="topbar"><div class="back">‹ 掼蛋经典' + (vip() ? '<i class="vip">VIP</i>' : '') + ' <i class="vip" data-act="season">⭐Lv.' + seasonInfo().lv + '</i></div><div class="currency"><span>🪙 <b>' + coins + '</b></span><span>💎 <b>' + gem() + '</b></span></div><div class="shop"><span data-act="signin">每日签到</span><span data-act="task">每日任务</span><span data-act="hist">战绩</span><span data-act="shop-free">免费福利</span></div></div><div class="lobby-body">' + goldtoggle + '<ul class="modes">' + modes + '</ul><div class="rooms">' + rooms + '</div></div><button class="quickstart" data-act="quick">快速开始<div class="sub">' + (matchOn ? '积分赛' : goldOn ? '金币场' : '经典玩法') + '·' + selRoom.n + (ns ? '·不洗牌' : '') + '</div></button><button class="quickstart onlinebtn" data-act="online">🌐 联机对战<div class="sub">创建/加入房间·和朋友同屏</div></button></div>' + (shop ? shopHtml() : '') + panelHtml();
+    return '<div class="lobby"><div class="clouds"></div><div class="deco"></div><div class="topbar"><div class="back">‹ 掼蛋经典' + (vip() ? '<i class="vip">VIP</i>' : '') + ' <i class="vip" data-act="season">⭐Lv.' + seasonInfo().lv + '</i></div><div class="currency"><span>🪙 <b>' + coins + '</b></span><span>💎 <b>' + gem() + '</b></span></div><div class="shop"><span data-act="signin">每日签到</span><span data-act="task">每日任务</span><span data-act="mail">邮件</span><span data-act="hist">战绩</span><span data-act="shop-free">免费福利</span></div></div><div class="lobby-body">' + goldtoggle + '<ul class="modes">' + modes + '</ul><div class="rooms">' + rooms + '</div></div><button class="quickstart" data-act="quick">快速开始<div class="sub">' + (matchOn ? '积分赛' : goldOn ? '金币场' : '经典玩法') + '·' + selRoom.n + (ns ? '·不洗牌' : '') + '</div></button><button class="quickstart onlinebtn" data-act="online">🌐 联机对战<div class="sub">创建/加入房间·和朋友同屏</div></button></div>' + (shop ? shopHtml() : '') + panelHtml();
   }
 
   function onlineEntryHtml() {
@@ -556,6 +580,7 @@
       case 'more': panel = 'settings'; render(lastSnap); break;
       case 'hist': panel = 'hist'; render(lastSnap); break;
       case 'task': panel = 'task'; render(lastSnap); break;
+      case 'mail': panel = 'mail'; render(lastSnap); break;
       case 'season': panel = 'season'; render(lastSnap); break;
       case 'signin': doSign(); break;
       case 'panel-close': panel = null; render(lastSnap); break;
@@ -606,6 +631,7 @@
     if (seasonInfo().lv < need) { toast('该桌布需赛季等级 Lv.' + need + ' 解锁'); return; }
     try { localStorage.setItem('gd_theme', m.dataset.themePick); } catch (er) {} applyTheme(); sfx('click'); render(lastSnap); });
   app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-task-claim]'); if (!m) return; sfx('click'); taskClaim(m.dataset.taskClaim); });
+  app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-mail-claim]'); if (!m) return; sfx('click'); mailClaim(m.dataset.mailClaim); });
   // P2 按钮组拖拽：长按(300ms)桌中时钟后拖动整个操作按钮组，松手保存位置
   var dragSt = null;
   app.addEventListener('pointerdown', function (e) {
