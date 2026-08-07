@@ -401,6 +401,10 @@ button:active { transform: scale(.93); }
 .online .obtn { width: 100%; height: 48px; margin: 8px 0; border: none; border-radius: 13px; font-size: 17px; font-weight: bold; background: #eef3fb; color: #2a4a7a; cursor: pointer; transition: transform .1s, filter .12s; }
 .online .obtn.primary { background: linear-gradient(180deg, var(--gold-2), var(--gold-d)); color: #6b3b00; box-shadow: inset 0 1px 0 #ffffffaa; }
 .online .obtn.ghost { background: transparent; color: #89a; font-weight: normal; height: 38px; }
+.online .obtn.danger { background: #fdeeee; color: #c0392b; border: 1px solid #f0b8b8; }
+.online .roundsel span { padding: 7px 13px; border-radius: 9px; background: #eef3fb; color: #567; font-size: 14px; cursor: pointer; transition: .12s; }
+.online .roundsel span.on { background: linear-gradient(180deg, var(--gold-2), var(--gold-d)); color: #6b3b00; font-weight: 800; }
+.tools .dangerbtn { background: #7a2a2acc; color: #ffd9d0; }
 .online .orow.join .obtn { width: auto; padding: 0 18px; margin: 0; }
 .online .otip { color: #89a; font-size: 13px; line-height: 1.6; margin: 14px 0 4px; }
 .online .otip b { color: #e07b2a; font-size: 16px; letter-spacing: 1px; }

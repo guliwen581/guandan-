@@ -40,10 +40,11 @@ var MAX_ROOMS = 1000;   // 同时存在的房间数上限
 var MAX_CONNS = 500;    // 同时在线 WebSocket 连接数上限
 var conns = 0;          // 当前活跃连接数
 
-function Room(code, base, gold) {
+function Room(code, base, gold, rounds) {
   this.code = code;
   this.base = base || 800;
   this.gold = !!gold;   // 金币场（P0-4）：建房时确定，整场有效
+  this.rounds = (rounds === 4 || rounds === 8 || rounds === 16) ? rounds : 0;  // 好友房限定局数（P1-1），0=不限
   this.seats = [null, null, null, null]; // {conn, name}
   this.started = false;
   this.game = createGame();
@@ -91,7 +92,7 @@ Room.prototype.scheduleTimeouts = function () {
 };
 Room.prototype.roomInfo = function () {
   return {
-    type: 'room', code: this.code, base: this.base, gold: this.gold, started: this.started,
+    type: 'room', code: this.code, base: this.base, gold: this.gold, rounds: this.rounds, started: this.started,
     seats: this.seats.map(function (o, i) { return { seat: i, name: o ? o.name : null, connected: !!(o && o.conn) }; })
   };
 };
@@ -106,6 +107,7 @@ Room.prototype.start = function () {
   this.started = true;
   this.game.setNames(this.names());
   this.game.setGoldMode(this.gold);
+  this.game.setMatchRounds(this.rounds);
   this.game.setHumanSeats(this.humanSeats()); // 未坐人的位由 AI 补
   this.game.quickStart(this.base);
 };
@@ -150,7 +152,7 @@ function handleConn(conn) {
       if (!/^[0-9A-Z]{3,8}$/.test(code)) { conn.send({ type: 'error', msg: '房间号无效' }); return; }
       if (!rooms[code]) {
         if (Object.keys(rooms).length >= MAX_ROOMS) { conn.send({ type: 'error', msg: '服务器房间已满' }); return; }
-        rooms[code] = new Room(code, msg.base || 800, !!msg.gold);
+        rooms[code] = new Room(code, msg.base || 800, !!msg.gold, msg.rounds);
       }
       room = rooms[code];
       if (room.started) { conn.send({ type: 'error', msg: '该局已开始，无法加入' }); room = null; return; }
@@ -165,6 +167,13 @@ function handleConn(conn) {
       if (room && seat >= 0) room.game.act(seat, msg.action || {});
     } else if (msg.type === 'next') {
       if (room) room.next();
+    } else if (msg.type === 'dissolve') {
+      if (room && seat === 0) {   // 仅房主(0号位)可解散（P1-1）
+        room.clearTimeouts();
+        for (var ds = 0; ds < 4; ds++) { var dso = room.seats[ds]; if (dso && dso.conn) dso.conn.send({ type: 'dissolved' }); }
+        delete rooms[room.code];
+        room = null; seat = -1;
+      }
     } else if (msg.type === 'chat') {
       if (!room) return;
       var m = { type: 'chat', seat: seat, text: String(msg.text || '').slice(0, 60) };

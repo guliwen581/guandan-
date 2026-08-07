@@ -29,15 +29,16 @@
     render();
   };
 
-  Net.createRoom = function (name) { Net._connectAndJoin('new', name, 800, Net._lobbyGold()); };
+  Net.roundsChoice = 0;   // P1-1 建房局数：0不限 / 4 / 8 / 16
+  Net.createRoom = function (name) { Net._connectAndJoin('new', name, 800, Net._lobbyGold(), Net.roundsChoice); };
   Net.joinRoom = function (code, name) {
     code = String(code || '').trim().toUpperCase();
     if (!code) { Net.lastError = '请输入房间号'; render(); return; }
-    Net._connectAndJoin(code, name, 800, Net._lobbyGold());
+    Net._connectAndJoin(code, name, 800, Net._lobbyGold(), 0);
   };
   Net._lobbyGold = function () { try { var sn = Game.snapshot(); return !!(sn && sn.mode && sn.mode.gold); } catch (e) { return false; } };  // 跟随大厅选择；加入已有房间时由房主设置决定
 
-  Net._connectAndJoin = function (room, name, base, gold) {
+  Net._connectAndJoin = function (room, name, base, gold, rounds) {
     Net.name = (name || '').trim().slice(0, 8) || defaultName();
     try { localStorage.setItem('gd_name', Net.name); } catch (e) {}
     Net.lastError = null;
@@ -46,7 +47,7 @@
     try { ws = new WebSocket(wsUrl()); }
     catch (e) { Net.lastError = '无法连接服务器'; render(); return; }
     Net.ws = ws;
-    ws.onopen = function () { ws.send(JSON.stringify({ type: 'join', room: room, name: Net.name, base: base, gold: !!gold })); };
+    ws.onopen = function () { ws.send(JSON.stringify({ type: 'join', room: room, name: Net.name, base: base, gold: !!gold, rounds: rounds || 0 })); };
     ws.onmessage = function (ev) { Net._onMessage(ev.data); };
     ws.onerror = function () { Net.lastError = '连接出错：联机请用 node server/main.js 启动的地址打开页面'; Net.started = false; render(); };
     ws.onclose = function () {
@@ -69,10 +70,15 @@
       if (msg.seat === Net.seat) return;                       // 自己发的本端已显示，跳过回声
       var vid = (msg.seat - (Net.seat || 0) + 4) % 4;          // 换算到本端视角座位
       if (GLOBAL.GDShowEmote) GLOBAL.GDShowEmote(vid, msg.text);
+    } else if (msg.type === 'dissolved') {
+      Net.lastError = '房间已被房主解散';
+      Net.leaveRoom();
+      if (GLOBAL.GDToast) GLOBAL.GDToast('房间已解散');
     } else if (msg.type === 'error') { Net.lastError = msg.msg; render(); }
   };
 
   Net.startGame = function () { if (Net.ws && Net.ws.readyState === 1) Net.ws.send(JSON.stringify({ type: 'start' })); };
+  Net.dissolve = function () { if (Net.ws && Net.ws.readyState === 1) Net.ws.send(JSON.stringify({ type: 'dissolve' })); };
   Net.next = function () { if (Net.ws && Net.ws.readyState === 1) Net.ws.send(JSON.stringify({ type: 'next' })); };
   Net.act = function (action) { if (Net.ws && Net.ws.readyState === 1) Net.ws.send(JSON.stringify({ type: 'act', action: action })); };
   Net.sendChat = function (text) { if (Net.ws && Net.ws.readyState === 1) Net.ws.send(JSON.stringify({ type: 'chat', text: String(text || '').slice(0, 30) })); };

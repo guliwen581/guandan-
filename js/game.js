@@ -44,7 +44,7 @@
   var S = null, SYNC = false, UI = null;
   var humanSeats = [0];                       // 真人座位；AUTO_ALL 时清空
   function isHuman(seat) { return humanSeats.indexOf(seat) >= 0; }
-  var lobbyMode = { noShuffle: false, gold: false };
+  var lobbyMode = { noShuffle: false, gold: false, rounds: 0 };  // rounds>0：好友房限定局数赛制
   var persisted = loadPersisted();
 
   function team(seat) { return seat & 1; }
@@ -93,7 +93,7 @@
       phase: 'lobby', base: base || persisted.base || 800, mult: 1, level: '2',
       teamLevel: ['2', '2'], dealerTeam: 0, roundNo: 0, matchOver: false, matchWinner: null,
       prevResult: null, firstLeader: 0, tribute: null,
-      mode: { noShuffle: lobbyMode.noShuffle, gold: lobbyMode.gold }, lastDeck: null,
+      mode: { noShuffle: lobbyMode.noShuffle, gold: lobbyMode.gold, rounds: lobbyMode.rounds }, lastDeck: null,
       hands: [[], [], [], []], finished: [false, false, false, false], finishOrder: [],
       top: null, passCount: 0, turn: 0, doubled: [null, null, null, null], doubleTurn: 0,
       passed: [false, false, false, false], discarded: [], discSuits: [], lastResult: null,
@@ -464,6 +464,10 @@
     S.prevResult = { finishOrder: S.finishOrder.slice(), pos: pos };
     if (adv.win) { S.matchOver = true; S.matchWinner = winTeam; }
     else if (!S.mode.gold) S.teamLevel[winTeam] = adv.level;
+    if (!S.matchOver && S.mode.rounds && S.roundNo >= S.mode.rounds) {   // 限定局数打完：按金币决胜
+      S.matchOver = true;
+      S.matchWinner = (S.coins[0] + S.coins[2]) >= (S.coins[1] + S.coins[3]) ? 0 : 1;
+    }
 
     S.lastResult = { finishOrder: S.finishOrder.slice(), pos: pos, winTeam: winTeam, combo: combo, comboName: comboName, rankMult: rankMult, delta: delta, deltas: deltas, newLevel: adv.win ? null : (S.mode.gold ? null : adv.level), matchOver: S.matchOver, matchWinner: S.matchWinner };
     save();
@@ -477,6 +481,7 @@
   function nextRound() { if (S.matchOver) return; startRound(); }
   function setNoShuffle(v) { lobbyMode.noShuffle = !!v; if (S && S.phase === 'lobby') render(); }
   function setGoldMode(v) { lobbyMode.gold = !!v; if (S && S.phase === 'lobby') render(); }
+  function setMatchRounds(n) { lobbyMode.rounds = (n === 4 || n === 8 || n === 16) ? n : 0; }
   function setBase(b) { if (S && S.phase === 'lobby') { S.base = b; render(); } }
   function setHumanSeats(arr) { humanSeats = (arr || []).slice(); }
   function setNames(arr) { if (arr && arr.length === 4) NAMES = arr.slice(); }
@@ -491,7 +496,7 @@
     init: init, toLobby: toLobby, quickStart: quickStart, nextRound: nextRound,
     humanPlay: humanPlay, humanPass: humanPass, humanTimeout: humanTimeout, humanDouble: humanDouble,
     humanTribute: humanTribute, humanTributeGive: humanTributeGive,
-    setNoShuffle: setNoShuffle, setBase: setBase, setGoldMode: setGoldMode,
+    setNoShuffle: setNoShuffle, setBase: setBase, setGoldMode: setGoldMode, setMatchRounds: setMatchRounds,
     snapshot: snapshot, snapshotFor: snapshotFor, act: act, setHumanSeats: setHumanSeats,
     setNames: setNames, resume: resume,
     humanPlayAt: humanPlayAt, humanPassAt: humanPassAt, humanDoubleAt: humanDoubleAt,

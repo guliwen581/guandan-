@@ -136,8 +136,12 @@
   function onlineEntryHtml() {
     var name = (hasNet() && Net.name) || '玩家';
     var err = (hasNet() && Net.lastError) ? '<div class="oerr">' + esc(Net.lastError) + '</div>' : '';
+    var rounds = hasNet() ? (Net.roundsChoice || 0) : 0;
+    var roundsel = '<div class="orow roundsel"><label>局数</label>' + [0, 4, 8, 16].map(function (n) {
+      return '<span data-rounds="' + n + '"' + (rounds === n ? ' class="on"' : '') + '>' + (n === 0 ? '不限' : n + '局') + '</span>';
+    }).join('') + '</div>';
     return '<div class="online"><div class="clouds"></div><div class="obox"><h2>🌐 联机对战</h2>' +
-      '<div class="orow"><label>昵称</label><input id="o-name" maxlength="8" value="' + esc(name) + '"/></div>' +
+      '<div class="orow"><label>昵称</label><input id="o-name" maxlength="8" value="' + esc(name) + '"/></div>' + roundsel +
       '<button class="obtn primary" data-act="o-create">创建房间</button>' +
       '<div class="orow join"><input id="o-code" maxlength="6" placeholder="输入房间号"/><button class="obtn" data-act="o-join">加入</button></div>' +
       '<p class="otip">把房间号发给朋友，4 人入座即可开打，空位由电脑补。</p>' + err +
@@ -152,10 +156,12 @@
       var me = hasNet() && Net.seat === i;
       return '<div class="oseat' + (s.connected ? ' full' : '') + (me ? ' me' : '') + '"><div class="oface">' + faceSVG(i) + '</div><div class="onm">' + (s.name ? esc(s.name) + (me ? '（你）' : '') : '空位') + '</div><div class="oteam">' + (i % 2 === 0 ? 'A 队' : 'B 队') + '</div></div>';
     }).join('');
-    return '<div class="online"><div class="clouds"></div><div class="obox wide"><h2>房间号 ' + esc(info.code) + (info.gold ? ' <span class="vip">🪙金币场</span>' : '') + '</h2>' +
+    var isHost = hasNet() && Net.seat === 0;
+    var meta = (info.gold ? ' <span class="vip">🪙金币场</span>' : '') + (info.rounds ? ' <span class="vip">' + info.rounds + '局制</span>' : '');
+    return '<div class="online"><div class="clouds"></div><div class="obox wide"><h2>房间号 ' + esc(info.code) + meta + '</h2>' +
       '<div class="oseats">' + seats + '</div>' +
       '<p class="otip">朋友打开同样网址，点"联机对战 → 加入"，输入 <b>' + esc(info.code) + '</b> 入座。</p>' + err +
-      '<div class="obtns"><button class="obtn primary" data-act="o-start">开始游戏</button><button class="obtn ghost" data-act="o-leave">离开房间</button></div>' +
+      '<div class="obtns"><button class="obtn primary" data-act="o-start">开始游戏</button>' + (isHost ? '<button class="obtn danger" data-act="o-dissolve">解散房间</button>' : '') + '<button class="obtn ghost" data-act="o-leave">离开房间</button></div>' +
       '</div></div>';
   }
 
@@ -262,11 +268,11 @@
       counterPanel = '<div class="counter"><h4>记牌器<span>剩余张数</span></h4><div class="grid">' + cells + '</div>' + lamps + '</div>'; }
 
     return '<div class="table"><div class="sky"></div><div class="mtn"></div><div class="pag l">🏯</div><div class="pag r">🏯</div>' +
-      '<div class="hud"><span>本局打 <b>' + esc(level) + '</b></span><span>倍数 <b>' + snap.mult + '</b></span><span>第' + snap.roundNo + '局</span></div>' +
+      '<div class="hud"><span>本局打 <b>' + esc(level) + '</b></span><span>倍数 <b>' + snap.mult + '</b></span><span>第' + snap.roundNo + (snap.mode && snap.mode.rounds ? '/' + snap.mode.rounds : '') + '局</span></div>' +
       (snap.mode && snap.mode.gold
         ? '<div class="tlv"><i class="t0">🪙 金币场</i><i class="t1">底分 ' + snap.base + ' · 封顶50000倍</i></div>'
         : '<div class="tlv"><i class="t0">我方 ' + snap.teamLevel[0] + '级</i><i class="t1">对方 ' + snap.teamLevel[1] + '级</i></div>') +
-      '<div class="tools"><button data-act="counter" class="' + (showCounter ? 'on' : '') + '">记牌器</button><span class="volwrap">🔊<input type="range" min="0" max="100" value="' + vol() + '" data-vol></span><button data-act="voice" class="voice' + (voiceOn() ? ' on' : '') + '" title="人声解说">' + (voiceOn() ? '🗣️' : '🔈') + '</button><button data-act="mute">' + (muted() ? '🔇' : '') + '</button><button data-act="more">更多</button></div>' +
+      '<div class="tools"><button data-act="counter" class="' + (showCounter ? 'on' : '') + '">记牌器</button><span class="volwrap">🔊<input type="range" min="0" max="100" value="' + vol() + '" data-vol></span><button data-act="voice" class="voice' + (voiceOn() ? ' on' : '') + '" title="人声解说">' + (voiceOn() ? '🗣️' : '🔈') + '</button><button data-act="mute">' + (muted() ? '🔇' : '') + '</button>' + (hasNet() && Net.active && Net.seat === 0 ? '<button data-act="o-dissolve" class="dangerbtn">解散</button>' : '') + '<button data-act="more">更多</button></div>' +
       banner +
       '<div class="felt"><div class="watermark"><div class="wm-org">绍兴市人工智能协会</div><div class="wm-title">掼蛋比赛</div></div></div>' +
       others + reveal + '<div class="playzone pz-self">' + selfPz + '</div>' + counterPanel +
@@ -449,15 +455,18 @@
       case 'o-create': if (hasNet()) { var nm = app.querySelector('#o-name'); Net.createRoom(nm ? nm.value : ''); } break;
       case 'o-join': if (hasNet()) { var nm2 = app.querySelector('#o-name'); var cd = app.querySelector('#o-code'); Net.joinRoom(cd ? cd.value : '', nm2 ? nm2.value : ''); } break;
       case 'o-start': if (hasNet()) Net.startGame(); break;
+      case 'o-dissolve': if (hasNet()) Net.dissolve(); break;
       case 'o-leave': if (hasNet()) Net.leaveRoom(); break;
     }
   });
   app.addEventListener('input', function (e) { var v = e.target.closest && e.target.closest('[data-vol]'); if (v) { var val = +v.value; if (typeof Sfx !== 'undefined' && Sfx && Sfx.setVolume) Sfx.setVolume(val / 100); try { localStorage.setItem('guandan_vol', val); } catch (er) {} } });
   app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-mode]'); if (!m || !lastSnap || lastSnap.phase !== 'lobby') return; var mode = m.dataset.mode, cur = lastSnap.mode && lastSnap.mode.noShuffle; if (mode === 'classic') G.setNoShuffle(false); else if (mode === 'noshuffle') G.setNoShuffle(!cur); });
   app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-gold]'); if (!m || !lastSnap || lastSnap.phase !== 'lobby') return; sfx('click'); G.setGoldMode(m.dataset.gold === '1'); });
+  app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-rounds]'); if (!m || !hasNet() || !Net.active || Net.started) return; Net.roundsChoice = +m.dataset.rounds; sfx('click'); render(); });
 
   var UI = { render: render, onLobby: function () { selected.clear(); locks = []; hintIdx = -1; dealShown = false; }, onSettle: function () {} };
   GLOBAL.GDRender = render;                 // net.js 用：推送服务器快照来渲染
+  GLOBAL.GDToast = toast;                   // net.js 用：系统消息提示
   GLOBAL.GDSetBackend = function (b) { G = b; }; // net.js 用：把动作后端切到网络代理
   Game.init(UI);
   if (typeof Sfx !== 'undefined' && Sfx && Sfx.setVolume) Sfx.setVolume(vol() / 100);
