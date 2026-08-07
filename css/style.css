@@ -148,7 +148,11 @@ body[data-theme="xiaguang"] .mtn { background:
 .thsws { display: inline-flex; gap: 6px; }
 .thsw { padding: 4px 10px; border-radius: 8px; background: #ffffff1c; color: #cfe0ff; font-size: 12px; cursor: pointer; transition: .12s; }
 .thsw.on { background: linear-gradient(180deg, var(--gold-2), var(--gold-d)); color: #6b3b00; font-weight: 800; }
+.thsw.lock { opacity: .5; }
 .center-actions .clock { cursor: grab; }
+.pp.claim { color: #6b3b00; background: linear-gradient(180deg, var(--gold-2), var(--gold-d)); padding: 6px 14px; border-radius: 9px; cursor: pointer; font-size: 13px; }
+.xpbar { height: 12px; border-radius: 6px; background: #ffffff1c; overflow: hidden; margin: 10px 0 14px; }
+.xpbar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold-2), var(--gold-d)); border-radius: 6px; transition: width .3s; }
 
 /* 顶部信息（玻璃胶囊） */
 .hud { position: absolute; top: 12px; left: 14px; display: flex; gap: 8px; z-index: 6; }

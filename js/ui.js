@@ -73,12 +73,47 @@
   function themeCur() { try { var t = localStorage.getItem('gd_theme'); return THEMES.some(function (x) { return x.k === t; }) ? t : 'classic'; } catch (e) { return 'classic'; } }
   function applyTheme() { try { document.body.dataset.theme = themeCur(); } catch (e) {} }
   GLOBAL.GDPanelClose = function () { panel = null; render(lastSnap); };
+  // ---- P2 赛季（经验→等级→解锁桌布）+ 每日任务 ----
+  var SEASON_LV = [30, 80, 150];                       // Lv1/2/3 经验门槛
+  var THEME_LV = { classic: 0, modern: 1, gufeng: 2, xiaguang: 3 };
+  function seasonInfo() {
+    var xp = 0; try { xp = +(localStorage.getItem('gd_xp') || 0); } catch (e) {}
+    var lv = 0; for (var i = 0; i < SEASON_LV.length; i++) if (xp >= SEASON_LV[i]) lv = i + 1;
+    return { xp: xp, lv: lv, next: lv < SEASON_LV.length ? SEASON_LV[lv] : null };
+  }
+  function seasonAdd(win) {
+    try { var xp = (+(localStorage.getItem('gd_xp') || 0)) + 10 + (win ? 5 : 0); localStorage.setItem('gd_xp', String(xp)); } catch (e) {}
+  }
+  function todayStr() { return new Date().toDateString(); }
+  function taskState() {
+    var hist = histList(), today = todayStr();
+    var played = hist.filter(function (e) { return new Date(e.t).toDateString() === today; }).length;
+    var wins = hist.filter(function (e) { return new Date(e.t).toDateString() === today && e.w; }).length;
+    var signed = false; try { signed = localStorage.getItem('gd_sign_date') === today; } catch (e) {}
+    var claimed = {}; try { claimed = JSON.parse(localStorage.getItem('gd_taskclaim_' + today) || '{}'); } catch (e) {}
+    return [
+      { id: 't1', n: '完成 1 局对局', p: Math.min(played, 1), goal: 1, done: played >= 1 },
+      { id: 't2', n: '赢得 1 局胜利', p: Math.min(wins, 1), goal: 1, done: wins >= 1 },
+      { id: 't3', n: '完成每日签到', p: signed ? 1 : 0, goal: 1, done: signed }
+    ].map(function (t) { t.claimed = !!claimed[t.id]; return t; });
+  }
+  function taskClaim(id) {
+    var st = taskState().filter(function (t) { return t.id === id; })[0];
+    if (!st || !st.done || st.claimed) { toast('该任务不可领取'); return; }
+    try {
+      var k = 'gd_taskclaim_' + todayStr();
+      var claimed = JSON.parse(localStorage.getItem(k) || '{}'); claimed[id] = 1;
+      localStorage.setItem(k, JSON.stringify(claimed));
+    } catch (e) {}
+    addGem(30); toast('任务完成 · 💎+30'); render(lastSnap);
+  }
   function histList() { try { return JSON.parse(localStorage.getItem('gd_hist') || '[]'); } catch (e) { return []; } }
   function histSave(snap) {
     if (!snap.lastResult) return;
     var r = snap.lastResult, mode = snap.mode && snap.mode.match ? '积分赛' : snap.mode && snap.mode.gold ? '金币场' : '晋级场';
     var e = { t: new Date().toLocaleString('zh-CN', { hour12: false }), m: mode, w: r.winTeam === 0, c: r.comboName, mu: snap.mult, d: r.delta };
     try { var h = histList(); h.unshift(e); localStorage.setItem('gd_hist', JSON.stringify(h.slice(0, 20))); } catch (er) {}
+    seasonAdd(r.winTeam === 0);   // 赛季经验：完局+10，胜利+5
   }
   function doSign() {
     var today = new Date().toDateString(), k = 'gd_sign_date';
@@ -93,9 +128,24 @@
     panel = null; render(lastSnap);
   }
   function panelHtml() {
+    if (panel === 'task') {
+      var ts = taskState();
+      var rows = ts.map(function (t) {
+        var btn = t.claimed ? '<span class="pp">已领</span>' : t.done ? '<span class="pp claim" data-task-claim="' + t.id + '">领取</span>' : '<span class="pp">' + t.p + '/' + t.goal + '</span>';
+        return '<div class="plan"><div class="pi">' + (t.claimed ? '✅' : t.done ? '🎁' : '⏳') + '</div><div class="pt"><b>' + t.n + '</b><span>奖励 💎30 · ' + t.p + '/' + t.goal + '</span></div>' + btn + '</div>';
+      }).join('');
+      return '<div class="modal" onclick="if(event.target===this&&window.GDPanelClose)window.GDPanelClose()"><div class="mbox"><h3>每日任务</h3><div class="msub">每日 0 点刷新</div>' + rows + '<div class="mbtns"><button class="mclose" data-act="panel-close">关闭</button></div></div></div>';
+    }
+    if (panel === 'season') {
+      var si = seasonInfo();
+      var bar = si.next ? Math.min(100, Math.round(si.xp / si.next * 100)) : 100;
+      var lvtxt = si.next ? 'Lv.' + si.lv + ' · ' + si.xp + '/' + si.next + ' 经验' : 'Lv.' + si.lv + '（满级）';
+      var desc = '<div class="plan"><div class="pi">🎨</div><div class="pt"><b>等级奖励：解锁桌布主题</b><span>Lv.1 现代 · Lv.2 古风 · Lv.3 霞光（每局+10经验，胜利+5）</span></div></div>';
+      return '<div class="modal" onclick="if(event.target===this&&window.GDPanelClose)window.GDPanelClose()"><div class="mbox"><h3>🏆 赛季等级</h3><div class="msub">' + lvtxt + '</div><div class="xpbar"><i style="width:' + bar + '%"></i></div>' + desc + '<div class="mbtns"><button class="mclose" data-act="panel-close">关闭</button></div></div></div>';
+    }
     if (panel === 'settings') {
-      var cur = themeCur();
-      var sw = THEMES.map(function (t) { return '<span class="thsw' + (t.k === cur ? ' on' : '') + '" data-theme-pick="' + t.k + '">' + t.n + '</span>'; }).join('');
+      var cur = themeCur(), slv = seasonInfo().lv;
+      var sw = THEMES.map(function (t) { var locked = THEME_LV[t.k] > slv; return '<span class="thsw' + (t.k === cur ? ' on' : '') + (locked ? ' lock' : '') + '" data-theme-pick="' + t.k + '">' + (locked ? '🔒' : '') + t.n + '</span>'; }).join('');
       return '<div class="modal" onclick="if(event.target===this&&window.GDPanelClose)window.GDPanelClose()"><div class="mbox"><h3>更多设置</h3><div class="msub">桌布主题 · 操作习惯</div>' +
         '<div class="plan"><div class="pi">🎨</div><div class="pt"><b>桌布主题</b><span class="thsws">' + sw + '</span></div></div>' +
         '<div class="plan" data-act="btnpos-reset"><div class="pi">🧭</div><div class="pt"><b>按钮组位置复位</b><span>长按桌中时钟可拖动按钮组</span></div><div class="pp">复位</div></div>' +
@@ -173,7 +223,7 @@
     var goldOn = snap && snap.mode && snap.mode.gold, matchOn = snap && snap.mode && snap.mode.match;
     var noneOn = !goldOn && !matchOn;
     var goldtoggle = '<div class="goldtoggle"><span data-gold=""' + (noneOn ? ' class="on"' : '') + '>🏆 晋级场<div class="gt-sub">打2→A 升级赛制</div></span><span data-gold="1"' + (goldOn ? ' class="on"' : '') + '>🪙 金币场<div class="gt-sub">无限局·底分×倍数结算</div></span><span data-gold="match"' + (matchOn ? ' class="on"' : '') + '>🏟️ 积分赛<div class="gt-sub">4局·积分排名决胜</div></span></div>';
-    return '<div class="lobby"><div class="clouds"></div><div class="deco"></div><div class="topbar"><div class="back">‹ 掼蛋经典' + (vip() ? '<i class="vip">VIP</i>' : '') + '</div><div class="currency"><span>🪙 <b>' + coins + '</b></span><span>💎 <b>' + gem() + '</b></span></div><div class="shop"><span data-act="signin">每日签到</span><span data-act="hist">战绩</span><span data-act="shop-vip">月卡会员</span><span data-act="shop-first">首充礼包</span><span data-act="shop-free">免费金币</span></div></div><div class="lobby-body">' + goldtoggle + '<ul class="modes">' + modes + '</ul><div class="rooms">' + rooms + '</div></div><button class="quickstart" data-act="quick">快速开始<div class="sub">' + (matchOn ? '积分赛' : goldOn ? '金币场' : '经典玩法') + '·' + selRoom.n + (ns ? '·不洗牌' : '') + '</div></button><button class="quickstart onlinebtn" data-act="online">🌐 联机对战<div class="sub">创建/加入房间·和朋友同屏</div></button></div>' + (shop ? shopHtml() : '') + panelHtml();
+    return '<div class="lobby"><div class="clouds"></div><div class="deco"></div><div class="topbar"><div class="back">‹ 掼蛋经典' + (vip() ? '<i class="vip">VIP</i>' : '') + ' <i class="vip" data-act="season">⭐Lv.' + seasonInfo().lv + '</i></div><div class="currency"><span>🪙 <b>' + coins + '</b></span><span>💎 <b>' + gem() + '</b></span></div><div class="shop"><span data-act="signin">每日签到</span><span data-act="task">每日任务</span><span data-act="hist">战绩</span><span data-act="shop-free">免费福利</span></div></div><div class="lobby-body">' + goldtoggle + '<ul class="modes">' + modes + '</ul><div class="rooms">' + rooms + '</div></div><button class="quickstart" data-act="quick">快速开始<div class="sub">' + (matchOn ? '积分赛' : goldOn ? '金币场' : '经典玩法') + '·' + selRoom.n + (ns ? '·不洗牌' : '') + '</div></button><button class="quickstart onlinebtn" data-act="online">🌐 联机对战<div class="sub">创建/加入房间·和朋友同屏</div></button></div>' + (shop ? shopHtml() : '') + panelHtml();
   }
 
   function onlineEntryHtml() {
@@ -505,6 +555,8 @@
       case 'quick': G.quickStart(selectedBase); break;
       case 'more': panel = 'settings'; render(lastSnap); break;
       case 'hist': panel = 'hist'; render(lastSnap); break;
+      case 'task': panel = 'task'; render(lastSnap); break;
+      case 'season': panel = 'season'; render(lastSnap); break;
       case 'signin': doSign(); break;
       case 'panel-close': panel = null; render(lastSnap); break;
       case 'btnpos-reset': try { localStorage.removeItem('gd_btnpos'); } catch (e) {} toast('按钮组位置已复位'); panel = null; render(lastSnap); break;
@@ -549,7 +601,11 @@
     }
   });
   app.addEventListener('input', function (e) { var v = e.target.closest && e.target.closest('[data-vol]'); if (v) { var val = +v.value; if (typeof Sfx !== 'undefined' && Sfx && Sfx.setVolume) Sfx.setVolume(val / 100); try { localStorage.setItem('guandan_vol', val); } catch (er) {} } });
-  app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-theme-pick]'); if (!m) return; try { localStorage.setItem('gd_theme', m.dataset.themePick); } catch (er) {} applyTheme(); sfx('click'); render(lastSnap); });
+  app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-theme-pick]'); if (!m) return;
+    var need = THEME_LV[m.dataset.themePick] || 0;
+    if (seasonInfo().lv < need) { toast('该桌布需赛季等级 Lv.' + need + ' 解锁'); return; }
+    try { localStorage.setItem('gd_theme', m.dataset.themePick); } catch (er) {} applyTheme(); sfx('click'); render(lastSnap); });
+  app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-task-claim]'); if (!m) return; sfx('click'); taskClaim(m.dataset.taskClaim); });
   // P2 按钮组拖拽：长按(300ms)桌中时钟后拖动整个操作按钮组，松手保存位置
   var dragSt = null;
   app.addEventListener('pointerdown', function (e) {
