@@ -121,7 +121,9 @@
     }).join('');
     var modes = MODES.map(function (md) { var on = md.m === 'classic' ? !ns : md.m === 'noshuffle' ? ns : false; return '<li class="' + (on ? 'on' : '') + '" data-mode="' + (md.m || '') + '">' + md.n + '</li>'; }).join('');
     var selRoom = ROOMS.filter(function (r) { return r.b === selectedBase; })[0] || ROOMS[0];
-    return '<div class="lobby"><div class="clouds"></div><div class="deco"></div><div class="topbar"><div class="back">‹ 掼蛋经典' + (vip() ? '<i class="vip">VIP</i>' : '') + '</div><div class="currency"><span>🪙 <b>' + coins + '</b></span><span>💎 <b>' + gem() + '</b></span></div><div class="shop"><span data-act="shop-vip">月卡会员</span><span data-act="shop-first">首充礼包</span><span data-act="shop-free">免费金币</span></div></div><div class="lobby-body"><ul class="modes">' + modes + '</ul><div class="rooms">' + rooms + '</div></div><button class="quickstart" data-act="quick">快速开始<div class="sub">经典玩法·' + selRoom.n + (ns ? '·不洗牌' : '') + '</div></button><button class="quickstart onlinebtn" data-act="online">🌐 联机对战<div class="sub">创建/加入房间·和朋友同屏</div></button></div>' + (shop ? shopHtml() : '');
+    var goldOn = snap && snap.mode && snap.mode.gold;
+    var goldtoggle = '<div class="goldtoggle"><span data-gold=""' + (goldOn ? '' : ' class="on"') + '>🏆 晋级场<div class="gt-sub">打2→A 升级赛制</div></span><span data-gold="1"' + (goldOn ? ' class="on"' : '') + '>🪙 金币场<div class="gt-sub">无限局·底分×倍数结算</div></span></div>';
+    return '<div class="lobby"><div class="clouds"></div><div class="deco"></div><div class="topbar"><div class="back">‹ 掼蛋经典' + (vip() ? '<i class="vip">VIP</i>' : '') + '</div><div class="currency"><span>🪙 <b>' + coins + '</b></span><span>💎 <b>' + gem() + '</b></span></div><div class="shop"><span data-act="shop-vip">月卡会员</span><span data-act="shop-first">首充礼包</span><span data-act="shop-free">免费金币</span></div></div><div class="lobby-body">' + goldtoggle + '<ul class="modes">' + modes + '</ul><div class="rooms">' + rooms + '</div></div><button class="quickstart" data-act="quick">快速开始<div class="sub">' + (goldOn ? '金币场' : '经典玩法') + '·' + selRoom.n + (ns ? '·不洗牌' : '') + '</div></button><button class="quickstart onlinebtn" data-act="online">🌐 联机对战<div class="sub">创建/加入房间·和朋友同屏</div></button></div>' + (shop ? shopHtml() : '');
   }
 
   function onlineEntryHtml() {
@@ -143,7 +145,7 @@
       var me = hasNet() && Net.seat === i;
       return '<div class="oseat' + (s.connected ? ' full' : '') + (me ? ' me' : '') + '"><div class="oface">' + faceSVG(i) + '</div><div class="onm">' + (s.name ? esc(s.name) + (me ? '（你）' : '') : '空位') + '</div><div class="oteam">' + (i % 2 === 0 ? 'A 队' : 'B 队') + '</div></div>';
     }).join('');
-    return '<div class="online"><div class="clouds"></div><div class="obox wide"><h2>房间号 ' + esc(info.code) + '</h2>' +
+    return '<div class="online"><div class="clouds"></div><div class="obox wide"><h2>房间号 ' + esc(info.code) + (info.gold ? ' <span class="vip">🪙金币场</span>' : '') + '</h2>' +
       '<div class="oseats">' + seats + '</div>' +
       '<p class="otip">朋友打开同样网址，点"联机对战 → 加入"，输入 <b>' + esc(info.code) + '</b> 入座。</p>' + err +
       '<div class="obtns"><button class="obtn primary" data-act="o-start">开始游戏</button><button class="obtn ghost" data-act="o-leave">离开房间</button></div>' +
@@ -242,7 +244,9 @@
 
     return '<div class="table"><div class="sky"></div><div class="mtn"></div><div class="pag l">🏯</div><div class="pag r">🏯</div>' +
       '<div class="hud"><span>本局打 <b>' + esc(level) + '</b></span><span>倍数 <b>' + snap.mult + '</b></span><span>第' + snap.roundNo + '局</span></div>' +
-      '<div class="tlv"><i class="t0">我方 ' + snap.teamLevel[0] + '级</i><i class="t1">对方 ' + snap.teamLevel[1] + '级</i></div>' +
+      (snap.mode && snap.mode.gold
+        ? '<div class="tlv"><i class="t0">🪙 金币场</i><i class="t1">底分 ' + snap.base + ' · 封顶50000倍</i></div>'
+        : '<div class="tlv"><i class="t0">我方 ' + snap.teamLevel[0] + '级</i><i class="t1">对方 ' + snap.teamLevel[1] + '级</i></div>') +
       '<div class="tools"><button data-act="counter" class="' + (showCounter ? 'on' : '') + '">记牌器</button><span class="volwrap">🔊<input type="range" min="0" max="100" value="' + vol() + '" data-vol></span><button data-act="voice" class="voice' + (voiceOn() ? ' on' : '') + '" title="人声解说">' + (voiceOn() ? '🗣️' : '🔈') + '</button><button data-act="mute">' + (muted() ? '🔇' : '') + '</button><button data-act="more">更多</button></div>' +
       banner +
       '<div class="felt"><div class="watermark"><div class="wm-org">绍兴市人工智能协会</div><div class="wm-title">掼蛋比赛</div></div></div>' +
@@ -256,6 +260,7 @@
     var win = r.winTeam === 0, title = r.matchOver ? (win ? '🏆 比赛胜利！' : '比赛失利') : '本局结算';
     var rows = r.finishOrder.map(function (sid, i) { var seat = lastSnap.seats[sid], w = seat.team === r.winTeam, d = r.deltas[sid]; return '<div class="row ' + (w ? 'win' : '') + '" style="animation-delay:' + (i * 0.08) + 's"><span class="fc">' + faceSVG(sid) + '</span><span class="nm">' + esc(seat.name) + (sid === 0 ? '（你）' : '') + '</span><span class="rl">' + Game.RANK_LABEL[r.pos[sid] - 1] + '</span><span class="dl ' + (d >= 0 ? 'plus' : 'minus') + '">' + (d >= 0 ? '+' : '') + d + '</span></div>'; }).join('');
     var extra = r.matchOver ? (win ? ' · 打通A，赢得整局！' : ' · 对方打通A') : (r.newLevel ? ' · 我方升至' + r.newLevel : '');
+    if (lastSnap.mode && lastSnap.mode.gold) extra = ' · 底分' + lastSnap.base + ' × 倍数' + lastSnap.mult + ' × 排名' + (r.rankMult || 1) + '（双下4/一三游2/一四游1）';
     return '<div class="settle">' + (win ? confettiHtml() : '') + '<div class="box"><h2>' + title + '</h2><div class="combo">' + (win ? '我方胜 🎉' : '对方胜') + ' · ' + r.comboName + ' · 倍数×' + lastSnap.mult + extra + '</div>' + rows + '<div class="btns"><button class="again" data-act="again">' + (r.matchOver ? '新比赛' : '再来一局') + '</button><button class="back2" data-act="lobby">返回大厅</button></div></div></div>';
   }
 
@@ -429,6 +434,7 @@
   });
   app.addEventListener('input', function (e) { var v = e.target.closest && e.target.closest('[data-vol]'); if (v) { var val = +v.value; if (typeof Sfx !== 'undefined' && Sfx && Sfx.setVolume) Sfx.setVolume(val / 100); try { localStorage.setItem('guandan_vol', val); } catch (er) {} } });
   app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-mode]'); if (!m || !lastSnap || lastSnap.phase !== 'lobby') return; var mode = m.dataset.mode, cur = lastSnap.mode && lastSnap.mode.noShuffle; if (mode === 'classic') G.setNoShuffle(false); else if (mode === 'noshuffle') G.setNoShuffle(!cur); });
+  app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-gold]'); if (!m || !lastSnap || lastSnap.phase !== 'lobby') return; sfx('click'); G.setGoldMode(m.dataset.gold === '1'); });
 
   var UI = { render: render, onLobby: function () { selected.clear(); locks = []; hintIdx = -1; dealShown = false; }, onSettle: function () {} };
   GLOBAL.GDRender = render;                 // net.js 用：推送服务器快照来渲染

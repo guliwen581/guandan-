@@ -45,6 +45,13 @@ button:active { transform: scale(.93); }
   font-size: 12px; padding: 8px 12px; border-radius: 12px; box-shadow: 0 4px 10px #0005, inset 0 1px 0 #ffffffaa; cursor: pointer; }
 .shop span::after { content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--red); box-shadow: 0 0 6px var(--red); }
 .lobby-body { position: relative; z-index: 2; flex: 1; display: flex; gap: 16px; padding: 6px 20px 96px; min-height: 0; }
+.goldtoggle { width: 150px; display: flex; flex-direction: column; gap: 8px; padding-top: 12px; }
+.goldtoggle span { padding: 12px 10px; border-radius: 13px; font-size: 15px; color: #d6e4ff; text-align: center;
+  background: var(--glass); border: 1px solid transparent; cursor: pointer; transition: .15s; backdrop-filter: blur(6px); }
+.goldtoggle span:hover { background: #ffffff26; }
+.goldtoggle span.on { background: linear-gradient(90deg, var(--gold-2), var(--gold-d)); color: #6b3b00; font-weight: 800;
+  border-color: #ffffff88; box-shadow: 0 4px 14px #f0a93c88, inset 0 1px 0 #ffffffaa; }
+.goldtoggle .gt-sub { font-size: 11px; font-weight: 600; opacity: .75; margin-top: 2px; }
 .modes { list-style: none; width: 140px; display: flex; flex-direction: column; gap: 7px; padding-top: 12px; }
 .modes li { padding: 13px 10px; border-radius: 13px; font-size: 15px; color: #d6e4ff;
   background: var(--glass); border: 1px solid transparent; text-align: center; transition: .15s; cursor: pointer; backdrop-filter: blur(6px); }

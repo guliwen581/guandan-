@@ -44,7 +44,7 @@
   var S = null, SYNC = false, UI = null;
   var humanSeats = [0];                       // 真人座位；AUTO_ALL 时清空
   function isHuman(seat) { return humanSeats.indexOf(seat) >= 0; }
-  var lobbyMode = { noShuffle: false };
+  var lobbyMode = { noShuffle: false, gold: false };
   var persisted = loadPersisted();
 
   function team(seat) { return seat & 1; }
@@ -92,7 +92,8 @@
     return {
       phase: 'lobby', base: base || persisted.base || 800, mult: 1, level: '2',
       teamLevel: ['2', '2'], dealerTeam: 0, roundNo: 0, matchOver: false, matchWinner: null,
-      prevResult: null, firstLeader: 0, tribute: null, mode: { noShuffle: lobbyMode.noShuffle }, lastDeck: null,
+      prevResult: null, firstLeader: 0, tribute: null,
+      mode: { noShuffle: lobbyMode.noShuffle, gold: lobbyMode.gold }, lastDeck: null,
       hands: [[], [], [], []], finished: [false, false, false, false], finishOrder: [],
       top: null, passCount: 0, turn: 0, doubled: [null, null, null, null], doubleTurn: 0,
       passed: [false, false, false, false], discarded: [], lastResult: null,
@@ -167,6 +168,7 @@
       lastResult = {
         finishOrder: lr.finishOrder.map(rot), pos: rpos, deltas: rdeltas,
         winTeam: lr.winTeam === vt ? 0 : 1, combo: lr.combo, comboName: lr.comboName, delta: lr.delta,
+        rankMult: lr.rankMult,
         newLevel: lr.newLevel, matchOver: lr.matchOver,
         matchWinner: lr.matchWinner == null ? null : (lr.matchWinner === vt ? 0 : 1)
       };
@@ -219,7 +221,7 @@
   // ---------- 一局开始（发牌 + 进贡）----------
   function startRound() {
     S.roundNo++;
-    S.level = S.teamLevel[S.dealerTeam];
+    S.level = S.mode.gold ? '2' : S.teamLevel[S.dealerTeam];  // 金币场固定级牌2（对标APK赛制"固定2为级牌"）
     S.mult = 1; S.finished = [false, false, false, false]; S.finishOrder = [];
     S.top = null; S.passCount = 0; S.doubled = [null, null, null, null]; S.doubleTurn = 0;
     S.passed = [false, false, false, false]; S.discarded = []; S.lastResult = null; S.tribute = null;
@@ -339,7 +341,7 @@
   function doubleDecision(seat, yes) {
     if (S.phase !== 'double') return;
     S.doubled[seat] = !!yes;
-    if (yes) S.mult = Math.min(S.mult * 2, 64);
+    if (yes) S.mult = S.mode.gold ? Math.min(S.mult * 2, 50000) : Math.min(S.mult * 2, 64);
     S.doubleTurn++;
     if (S.doubleTurn >= 4) { S.phase = 'play'; S.turn = S.firstLeader; schedule(); }
     else schedule();
@@ -352,13 +354,19 @@
   function humanDouble(yes) { humanDoubleAt(0, yes); }
 
   // ---------- 出牌 ----------
+  // 金币场炸弹倍数表（APK 明文）：4炸/5炸/同花顺 ×2；6炸/7炸 ×2；8炸及以上 ×3；天王炸 ×5
+  function bombMultFor(play) {
+    if (play.type === 'rocket') return 5;
+    if (play.type === 'sf') return 2;
+    return play.cards.length >= 8 ? 3 : 2;
+  }
   function applyPlay(seat, play) {
     var ids = {}; play.cards.forEach(function (c) { ids[c.id] = true; });
     S.hands[seat] = S.hands[seat].filter(function (c) { return !ids[c.id]; });
     S.top = { play: play, owner: seat }; S.passCount = 0;
     S.passed = [false, false, false, false];
     play.cards.forEach(function (c) { S.discarded.push(c.r); });
-    if (Rules.isBomb(play)) S.mult = Math.min(S.mult * 2, 64);
+    if (Rules.isBomb(play)) S.mult = S.mode.gold ? Math.min(S.mult * bombMultFor(play), 50000) : Math.min(S.mult * 2, 64);
     if (S.hands[seat].length === 0) { S.finished[seat] = true; S.finishOrder.push(seat); }
     if (roundOver()) { endRound(); return; }
     S.turn = nextAlive(seat); schedule();
@@ -436,16 +444,17 @@
     var wp = pos.map(function (p, i) { return team(i) === winTeam ? p : 0; }).filter(Boolean).sort(function (a, b) { return a - b; });
     var combo = (wp[0] === 1 && wp[1] === 2) ? 3 : (wp[0] === 1 && wp[1] === 3) ? 2 : 1;
     var comboName = combo === 3 ? '双上' : combo === 2 ? '头游+三游' : '头游+末游';
-    var delta = S.base * S.mult * combo, deltas = [0, 0, 0, 0];
+    var rankMult = combo === 3 ? 4 : combo === 2 ? 2 : 1;               // 金币场排名倍数（APK：双下4/一三游2/一四游1）
+    var delta = S.base * S.mult * (S.mode.gold ? rankMult : combo), deltas = [0, 0, 0, 0];
     for (var s = 0; s < 4; s++) { deltas[s] = team(s) === winTeam ? delta : -delta; S.coins[s] += deltas[s]; }
 
-    var adv = advanceLevel(S.teamLevel[winTeam], combo);
+    var adv = S.mode.gold ? { win: false } : advanceLevel(S.teamLevel[winTeam], combo);  // 金币场无升级/无终局
     S.dealerTeam = winTeam;
     S.prevResult = { finishOrder: S.finishOrder.slice(), pos: pos };
     if (adv.win) { S.matchOver = true; S.matchWinner = winTeam; }
-    else S.teamLevel[winTeam] = adv.level;
+    else if (!S.mode.gold) S.teamLevel[winTeam] = adv.level;
 
-    S.lastResult = { finishOrder: S.finishOrder.slice(), pos: pos, winTeam: winTeam, combo: combo, comboName: comboName, delta: delta, deltas: deltas, newLevel: adv.win ? null : adv.level, matchOver: S.matchOver, matchWinner: S.matchWinner };
+    S.lastResult = { finishOrder: S.finishOrder.slice(), pos: pos, winTeam: winTeam, combo: combo, comboName: comboName, rankMult: rankMult, delta: delta, deltas: deltas, newLevel: adv.win ? null : (S.mode.gold ? null : adv.level), matchOver: S.matchOver, matchWinner: S.matchWinner };
     save();
     render();
     if (UI && UI.onSettle) UI.onSettle(S.lastResult);
@@ -456,6 +465,7 @@
   function quickStart(base) { S = newMatch(base || S && S.base); startRound(); }
   function nextRound() { if (S.matchOver) return; startRound(); }
   function setNoShuffle(v) { lobbyMode.noShuffle = !!v; if (S && S.phase === 'lobby') render(); }
+  function setGoldMode(v) { lobbyMode.gold = !!v; if (S && S.phase === 'lobby') render(); }
   function setBase(b) { if (S && S.phase === 'lobby') { S.base = b; render(); } }
   function setHumanSeats(arr) { humanSeats = (arr || []).slice(); }
   function setNames(arr) { if (arr && arr.length === 4) NAMES = arr.slice(); }
@@ -470,12 +480,13 @@
     init: init, toLobby: toLobby, quickStart: quickStart, nextRound: nextRound,
     humanPlay: humanPlay, humanPass: humanPass, humanTimeout: humanTimeout, humanDouble: humanDouble,
     humanTribute: humanTribute, humanTributeGive: humanTributeGive,
-    setNoShuffle: setNoShuffle, setBase: setBase,
+    setNoShuffle: setNoShuffle, setBase: setBase, setGoldMode: setGoldMode,
     snapshot: snapshot, snapshotFor: snapshotFor, act: act, setHumanSeats: setHumanSeats,
     setNames: setNames, resume: resume,
     humanPlayAt: humanPlayAt, humanPassAt: humanPassAt, humanDoubleAt: humanDoubleAt,
     humanTributeAt: humanTributeAt, humanTributeGiveAt: humanTributeGiveAt, humanTimeoutAt: humanTimeoutAt,
     _tributeCandidates: tributeCandidates, _testFirstLeader: function () { return S && S.firstLeader; },
+    _bombMultFor: bombMultFor,
     get RANK_LABEL() { return RANK_LABEL; }, get NAMES() { return NAMES; },
     set AUTO_ALL(v) { humanSeats = v ? [] : [0]; }, set sync(v) { SYNC = v; },
     _team: team, _partner: partner, _leaderAfter: leaderAfter, _runTributeTest: _runTributeTest,

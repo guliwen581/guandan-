@@ -40,9 +40,10 @@ var MAX_ROOMS = 1000;   // 同时存在的房间数上限
 var MAX_CONNS = 500;    // 同时在线 WebSocket 连接数上限
 var conns = 0;          // 当前活跃连接数
 
-function Room(code, base) {
+function Room(code, base, gold) {
   this.code = code;
   this.base = base || 800;
+  this.gold = !!gold;   // 金币场（P0-4）：建房时确定，整场有效
   this.seats = [null, null, null, null]; // {conn, name}
   this.started = false;
   this.game = createGame();
@@ -90,7 +91,7 @@ Room.prototype.scheduleTimeouts = function () {
 };
 Room.prototype.roomInfo = function () {
   return {
-    type: 'room', code: this.code, base: this.base, started: this.started,
+    type: 'room', code: this.code, base: this.base, gold: this.gold, started: this.started,
     seats: this.seats.map(function (o, i) { return { seat: i, name: o ? o.name : null, connected: !!(o && o.conn) }; })
   };
 };
@@ -104,6 +105,7 @@ Room.prototype.start = function () {
   if (!this.humanSeats().length) return;
   this.started = true;
   this.game.setNames(this.names());
+  this.game.setGoldMode(this.gold);
   this.game.setHumanSeats(this.humanSeats()); // 未坐人的位由 AI 补
   this.game.quickStart(this.base);
 };
@@ -148,7 +150,7 @@ function handleConn(conn) {
       if (!/^[0-9A-Z]{3,8}$/.test(code)) { conn.send({ type: 'error', msg: '房间号无效' }); return; }
       if (!rooms[code]) {
         if (Object.keys(rooms).length >= MAX_ROOMS) { conn.send({ type: 'error', msg: '服务器房间已满' }); return; }
-        rooms[code] = new Room(code, msg.base || 800);
+        rooms[code] = new Room(code, msg.base || 800, !!msg.gold);
       }
       room = rooms[code];
       if (room.started) { conn.send({ type: 'error', msg: '该局已开始，无法加入' }); room = null; return; }
