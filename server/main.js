@@ -67,6 +67,26 @@ Room.prototype.broadcast = function () {
     var o = this.seats[s];
     if (o && o.conn) o.conn.send({ type: 'snapshot', seq: this.seq, snap: this.game.snapshotFor(s) });
   }
+  this.scheduleTimeouts();   // P0-2 服务器权威计时：每个待行动真人 20s，超时引擎代打
+};
+Room.prototype.TIMEOUT_MS = 20000;
+Room.prototype.clearTimeouts = function () {
+  if (this._timers) for (var k in this._timers) clearTimeout(this._timers[k]);
+  this._timers = {};
+};
+Room.prototype.scheduleTimeouts = function () {
+  this.clearTimeouts();
+  var self = this;
+  for (var s = 0; s < 4; s++) {
+    var o = this.seats[s];
+    if (!o || !o.conn) continue;
+    var sn = this.game.snapshotFor(s);
+    if (sn.canPlay || sn.canDouble || sn.canTribute) {
+      this._timers[s] = setTimeout(function (seat) {
+        self.game.act(seat, { type: 'timeout' });   // 引擎代出/代过/不加倍/代选贡
+      }, this.TIMEOUT_MS, s);
+    }
+  }
 };
 Room.prototype.roomInfo = function () {
   return {
@@ -101,6 +121,7 @@ Room.prototype.next = function () {
 Room.prototype.onLeave = function (seat) {
   if (!this.seats[seat]) return;
   this.seats[seat] = null;
+  this.clearTimeouts();    // 座位变化后由下一次 broadcast 重建计时
   if (this.started) {
     this.game.setHumanSeats(this.humanSeats()); // 离开者的位交给 AI 续玩
     this.game.resume();

@@ -34,7 +34,11 @@ function driveRound(game) {
     for (var s = 0; s < 4; s++) {
       var sn = game.snapshotFor(s);
       if (sn.canDouble) { game.act(s, { type: 'double', yes: false }); acted = true; break; }
-      if (sn.canTribute) { var h = sn.seats[0].cards; if (h && h.length) game.act(s, { type: 'tribute', id: tributeId(h, sn.level) }); acted = true; break; }
+      if (sn.canTribute) {
+        if (sn.tribute && sn.tribute.tributeKind === 'give') { var gc = sn.tribute.giveCandidates; if (gc && gc.length) game.act(s, { type: 'tributeGive', id: gc[0] }); }
+        else { var h = sn.seats[0].cards; if (h && h.length) game.act(s, { type: 'tribute', id: tributeId(h, sn.level) }); }
+        acted = true; break;
+      }
       if (sn.canPlay) { var mv = legalMove(sn); if (mv.pass) game.act(s, { type: 'pass' }); else game.act(s, { type: 'play', ids: mv.ids }); acted = true; break; }
     }
     if (!acted) break;
@@ -95,7 +99,11 @@ var gd = 0;
 while (g1.snapshotFor(0).phase !== 'settle' && gd++ < 5000) {
   var s0 = g1.snapshotFor(0);
   if (s0.canDouble) { g1.act(0, { type: 'double', yes: false }); continue; }
-  if (s0.canTribute) { var hh = s0.seats[0].cards; g1.act(0, { type: 'tribute', id: tributeId(hh, s0.level) }); continue; }
+  if (s0.canTribute) {
+    if (s0.tribute && s0.tribute.tributeKind === 'give') { var gcs = s0.tribute.giveCandidates; if (gcs && gcs.length) g1.act(0, { type: 'tributeGive', id: gcs[0] }); }
+    else { var hh = s0.seats[0].cards; g1.act(0, { type: 'tribute', id: tributeId(hh, s0.level) }); }
+    continue;
+  }
   if (s0.canPlay) { var mv = legalMove(s0); if (mv.pass) g1.act(0, { type: 'pass' }); else g1.act(0, { type: 'play', ids: mv.ids }); continue; }
   break; // AI 已在 schedule 内同步推进
 }

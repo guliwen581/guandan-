@@ -92,6 +92,7 @@
     humanPass: function () { Net.act({ type: 'pass' }); return true; },
     humanDouble: function (yes) { Net.act({ type: 'double', yes: !!yes }); },
     humanTribute: function (id) { Net.act({ type: 'tribute', id: id }); return true; },
+    humanTributeGive: function (id) { Net.act({ type: 'tributeGive', id: id }); return true; },
     humanTimeout: function () { Net.act({ type: 'timeout' }); },
     quickStart: function () { Net.next(); },
     nextRound: function () { Net.next(); },

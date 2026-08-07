@@ -158,6 +158,7 @@
   function seatHtml(seat, snap) {
     var rk = seat.rank ? '<span class="rank r' + rankIdx(seat.rank) + '">' + seat.rank + '</span>' : '';
     var dbl = seat.doubled ? '<span class="dbl">加倍</span>' : '';
+    dbl += seat.alarm ? '<span class="alarm">🔔' + seat.alarm + '</span>' : '';
     return '<div class="seat ' + seat.pos + (snap.turn === seat.id ? ' active' : '') + '"><div class="avatar">' + faceSVG(seat.id) + '<span class="badge">' + seat.handCount + '</span>' + dbl + rk + '</div><div class="plate"><span class="nm"><i class="gem"></i>' + esc(seat.name) + '</span><span class="cn">🪙 ' + seat.coins + '</span></div>' + clockHtml(seat.id, snap) + '</div>';
   }
   function pzHtml(seat, snap) {
@@ -170,12 +171,14 @@
   function handHtml(snap) {
     var self = snap.seats[0], level = snap.level, hand = self.cards || [];
     var interactive = snap.canPlay || snap.canTribute, dis = interactive ? '' : 'disabled';
+    var tbc = {};   // 进贡候选牌高亮（P0-1：只能从并列最大的牌里选）
+    if (snap.tribute && snap.tribute.giveCandidates) snap.tribute.giveCandidates.forEach(function (id) { tbc[id] = 1; });
     var org = Rules.organize(hand, level, locks);
     var li = -1;
     var cols = org.columns.map(function (col) {
       if (col.locked) li++;
       var ga = col.locked ? ' data-grp="' + li + '"' : '';
-      var cards = col.cards.map(function (c) { return cardHtml(c, (selected.has(c.id) ? 'sel ' : '') + dis, interactive, level, col.locked); }).join('');
+      var cards = col.cards.map(function (c) { return cardHtml(c, (selected.has(c.id) ? 'sel ' : '') + (tbc[c.id] ? 'tbcand ' : '') + dis, interactive, level, col.locked); }).join('');
       var chip = col.chip ? '<span class="chip ' + chipClass(col) + '"' + ga + '>' + col.chip + '</span>' : '';
       return '<div class="rail' + (col.locked ? ' locked' : '') + '">' + cards + chip + '</div>';
     }).join('');
@@ -198,6 +201,10 @@
     return '<div class="strip"><span class="seltype">' + (selType || '同花顺') + '</span><div class="pips">' + pip('S') + pip('H') + pip('C') + pip('D') + '</div></div>';
   }
   function centerHtml(snap) {
+    if (snap.canTribute && snap.tribute && snap.tribute.tributeKind === 'give') {
+      var multi = (snap.tribute.giveCandidates || []).length > 1;
+      return '<div class="center-actions"><div class="tbtxt">' + (multi ? '请从最大的牌中选 1 张进贡' : '请确认进贡这张最大的牌') + '</div><button class="ca-play go" data-act="tribute-give"' + (selected.size === 1 ? '' : ' disabled') + '>进贡</button></div>';
+    }
     if (snap.canTribute) { var p = snap.tribute.pairs.filter(function (x) { return x.receiver === 0; })[0]; return '<div class="center-actions"><div class="tbtxt">你收到 ' + cardHtml(p.held, '', false, snap.level) + ' ，请选 1 张还贡</div><button class="ca-play go" data-act="tribute"' + (selected.size === 1 ? '' : ' disabled') + '>还贡</button></div>'; }
     if (snap.phase === 'tribute') {   // 进贡阶段但无需本家操作：给等待态文案，避免看起来"卡住/不能操作"
       var wn = snap.tribute && snap.tribute.givenByHuman ? '已自动进贡，等待对方还贡…' : '进贡 / 还贡进行中…';
@@ -228,7 +235,7 @@
       if (snap.tribute.anti) banner = '<div class="banner">抗贡！本局无人进贡</div>';
       else if (snap.tribute.givenByHuman && snap.tribute.gotByHuman && !snap.canTribute) banner = '<div class="banner">你进贡 ' + cardHtml(snap.tribute.givenByHuman, '', false, level) + ' 收回 ' + cardHtml(snap.tribute.gotByHuman, '', false, level) + '</div>';  // gotByHuman 空值防护，修渲染崩溃
     }
-    var selfMeta = '<div class="selfmeta' + (snap.turn === 0 ? ' active' : '') + '"><div class="avatar">' + faceSVG(0) + (self.doubled ? '<span class="dbl">加倍</span>' : '') + (self.rank ? '<span class="rank r' + rankIdx(self.rank) + '">' + self.rank + '</span>' : '') + '</div><span class="nm"><i class="gem"></i>' + esc(self.name) + '</span><span class="cn">🪙 ' + self.coins + '</span></div>';
+    var selfMeta = '<div class="selfmeta' + (snap.turn === 0 ? ' active' : '') + '"><div class="avatar">' + faceSVG(0) + (self.doubled ? '<span class="dbl">加倍</span>' : '') + (self.alarm ? '<span class="alarm">🔔' + self.alarm + '</span>' : '') + (self.rank ? '<span class="rank r' + rankIdx(self.rank) + '">' + self.rank + '</span>' : '') + '</div><span class="nm"><i class="gem"></i>' + esc(self.name) + '</span><span class="cn">🪙 ' + self.coins + '</span></div>';
     var doublebar = snap.canDouble ? '<div class="doublebar"><button class="yes" data-act="dbl-yes">加倍</button><button class="no" data-act="dbl-no">不加倍</button></div>' : '';
     var counterPanel = '';
     if (showCounter && snap.counter) { var cells = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', 'SJ', 'BJ'].map(function (r) { var n = snap.counter[r], jk = r === 'SJ' || r === 'BJ'; var lab = jk ? (r === 'BJ' ? '大' : '小') : r; return '<div class="cell' + (n <= 0 ? ' zero' : '') + (jk ? ' jk' : '') + '"><div class="r">' + lab + '</div><div class="n">' + n + '</div></div>'; }).join(''); counterPanel = '<div class="counter"><h4>记牌器<span>剩余张数</span></h4><div class="grid">' + cells + '</div></div>'; }
@@ -257,6 +264,7 @@
     if (prev.phase !== 'settle' && snap.phase === 'settle' && snap.lastResult) { sfx('settle'); setTimeout(function () { sfx(snap.lastResult.winTeam === 0 ? 'win' : 'lose'); }, 200); }
     if (snap.top && (!prev.top || snap.top.owner !== prev.top.owner || snap.top.play !== prev.top.play)) { sfx('card'); if (Rules.isBomb(snap.top.play)) setTimeout(function () { sfx('bomb'); }, 30); }
     for (var i = 0; i < 4; i++) if (snap.seats[i].passed && !prev.seats[i].passed) sfx('pass');
+    for (var j = 0; j < 4; j++) if (snap.seats[j].alarm && !prev.seats[j].alarm) { sfx('tick'); break; }  // P0-3 报警音
   }
   function render(snap) {
     if (hasNet() && Net.active && !Net.started) {
@@ -285,7 +293,7 @@
           timeLeft--; var el = app.querySelector('.clock .face'); if (el) el.textContent = timeLeft;
           var clk = app.querySelector('.clock'); if (clk) clk.classList.toggle('low', timeLeft <= 5);
           if (timeLeft <= 5) sfx('tick');
-          if (timeLeft <= 0) { clearInterval(timerInt); timerInt = null; if (lastSnap.canPlay) G.humanTimeout(); else if (lastSnap.canDouble) G.humanDouble(false); else if (lastSnap.canTribute) { var h = lastSnap.seats[0].cards; if (h && h.length) G.humanTribute(h[0].id); } }
+          if (timeLeft <= 0) { clearInterval(timerInt); timerInt = null; if (lastSnap.canPlay) G.humanTimeout(); else if (lastSnap.canDouble) G.humanDouble(false); else if (lastSnap.canTribute) G.humanTimeout(); }   // 进/还贡超时交给引擎代选
         }, 1000);
       }
     }
@@ -361,7 +369,11 @@
   function doHint() { if (!lastSnap || !lastSnap.canPlay) return; var legal = legalMovesForSelf(lastSnap); if (!legal.length) { selected.clear(); render(lastSnap); return; } hintIdx = (hintIdx + 1) % legal.length; selected = new Set(legal[hintIdx].cards.map(function (c) { return c.id; })); sfx('select'); render(lastSnap); }
   function demoStep() {
     if (!lastSnap) return;
-    if (lastSnap.canTribute) { var h = lastSnap.seats[0].cards; if (h && h.length) G.humanTribute(h[0].id); return; }
+    if (lastSnap.canTribute) {
+      if (lastSnap.tribute && lastSnap.tribute.tributeKind === 'give') { var gc = lastSnap.tribute.giveCandidates; if (gc && gc.length) G.humanTributeGive(gc[0]); }
+      else G.humanTimeout();   // 引擎代选最小合规还贡牌
+      return;
+    }
     if (lastSnap.canDouble) { G.humanDouble(false); return; }
     if (lastSnap.canPlay) { var legal = legalMovesForSelf(lastSnap); if (!lastSnap.top || legal.length) { if (legal.length) G.humanPlay(legal[0].cards.map(function (c) { return c.id; })); else G.humanPass(); } else G.humanPass(); }
   }
@@ -393,6 +405,7 @@
       case 'pass': if (G.humanPass()) selected.clear(); break;
       case 'hint': doHint(); break;
       case 'tribute': if (selected.size === 1 && G.humanTribute(Array.from(selected)[0])) selected.clear(); else flashHand(); break;
+      case 'tribute-give': if (selected.size === 1 && G.humanTributeGive(Array.from(selected)[0])) selected.clear(); else flashHand(); break;
       case 'lock': doLock(); break;
       case 'rails':
         selected.clear();

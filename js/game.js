@@ -57,6 +57,19 @@
   function isWildCard(c) { return Cards.isWild(c, S.level); }
   // 进贡：除逢人配外最大的牌（王可进）
   function highestTribute(hand) { var e = hand.filter(function (c) { return !isWildCard(c); }); var b = e[0]; for (var i = 1; i < e.length; i++) if (cmp(e[i]) > cmp(b)) b = e[i]; return b; }
+  // 进贡候选：所有并列最大的牌（规则：必须进最大牌，同大时可在并列张中任选一张）
+  function tributeCandidates(hand) {
+    var e = hand.filter(function (c) { return !isWildCard(c); });
+    if (!e.length) return [];
+    var hv = cmp(e[0]), out = [e[0]];
+    for (var i = 1; i < e.length; i++) {
+      var v = cmp(e[i]);
+      if (v > hv) { hv = v; out = [e[i]]; }
+      else if (v === hv) out.push(e[i]);
+    }
+    return out;
+  }
+  function maxTributeValue(hand) { var e = hand.filter(function (c) { return !isWildCard(c); }); if (!e.length) return -1; var hv = cmp(e[0]); for (var i = 1; i < e.length; i++) if (cmp(e[i]) > hv) hv = cmp(e[i]); return hv; }
   // 还贡：点数<=10 且非级牌/逢人配/王；一张都没有时退化为非逢人配/王最小牌（避免卡死）
   function eligibleReturn(c) { return c.s !== 'W' && !isWildCard(c) && c.r !== S.level && Cards.baseValue(c.r) <= 10; }
   function returnLow(hand) {
@@ -120,6 +133,7 @@
         id: ni, pos: SEAT_POS[ni], name: NAMES[i], face: FACES[i], team: team(ni),
         teamLevel: S.teamLevel[team(i)],
         coins: S.coins[i], handCount: S.hands[i].length, finished: S.finished[i],
+        alarm: (!S.finished[i] && S.hands[i].length > 0 && S.hands[i].length <= 2) ? S.hands[i].length : 0,  // P0-3 报警：剩1-2张
         rank: ridx >= 0 ? RANK_LABEL[ridx] : null,
         doubled: S.doubled[i], passed: S.passed[i],
         cards: reveal ? (ni === 0 ? Rules.sortHand(S.hands[i], S.level) : S.hands[i].slice()) : null
@@ -130,11 +144,20 @@
     if (S.tribute) {
       var givenByHuman = null, gotByHuman = null;
       S.tribute.pairs.forEach(function (p) { if (p.giver === viewer) { givenByHuman = p.held; gotByHuman = p.back || null; } });
+      var tKind = S.tribute.pendingKinds[viewer] || null;   // 'give'=轮到我选进贡牌 'back'=轮到我选还贡牌
+      var giveCands = null;
+      if (tKind === 'give') {
+        var gp = S.tribute.pairs.filter(function (p) { return p.giver === viewer; })[0];
+        if (gp && gp.candidates) giveCands = gp.candidates.map(function (c) { return c.id; });
+      }
       tribute = {
         anti: S.tribute.anti,
         pairs: S.tribute.pairs.map(function (p) { return { giver: rot(p.giver), receiver: rot(p.receiver), held: p.held, back: p.back }; }),
         givenByHuman: givenByHuman, gotByHuman: gotByHuman,
-        pendingReceiver: S.tribute.pending.indexOf(viewer) >= 0 ? 0 : null
+        pendingReceiver: tKind === 'back' ? 0 : null,
+        pendingGiver: tKind === 'give',
+        giveCandidates: giveCands,
+        tributeKind: tKind
       };
     }
     var lastResult = null;
@@ -227,10 +250,10 @@
     var givRec = [];
     if (isDouble) {
       var g3 = seatOfPos[2], g4 = seatOfPos[3];
-      var c3 = highestTribute(S.hands[g3]), c4 = highestTribute(S.hands[g4]);
+      var v3 = maxTributeValue(S.hands[g3]), v4 = maxTributeValue(S.hands[g4]); // 候选皆并列最大，比值即比最大牌
       var bigG, smG;
-      if (cmp(c4) > cmp(c3)) { bigG = g4; smG = g3; }
-      else if (cmp(c4) < cmp(c3)) { bigG = g3; smG = g4; }
+      if (v4 > v3) { bigG = g4; smG = g3; }
+      else if (v4 < v3) { bigG = g3; smG = g4; }
       else { bigG = g3; smG = g4; } // 同大：进贡映射取三游→头游（领头另算）
       givRec = [{ giver: bigG, receiver: seatOfPos[0] }, { giver: smG, receiver: seatOfPos[1] }];
     } else if (isSingle) {
@@ -238,23 +261,58 @@
     }
     var antiN = 0; givRec.forEach(function (gr) { antiN += wildCount(gr.giver); }); // 文档：逢人配(红桃级牌)计抗贡
     if (givRec.length === 0) { S.tribute = null; S.firstLeader = fin[0]; return; } // 头末：无进贡
-    S.tribute = { anti: antiN >= 2, pairs: givRec, pending: [] };
+    S.tribute = { anti: antiN >= 2, pairs: givRec, pending: [], pendingKinds: {} };
     if (antiN >= 2) { S.firstLeader = fin[0]; return; }                  // 抗贡：头游先出，不动牌
-    givRec.forEach(function (gr) {                                    // 进贡
-      var card = highestTribute(S.hands[gr.giver]);
-      S.hands[gr.giver] = S.hands[gr.giver].filter(function (c) { return c.id !== card.id; });
-      S.hands[gr.receiver].push(card); gr.held = card;
+    // 进贡（两段式）：候选=并列最大牌；真人且候选>1 → 挂起等选（P0-1 进贡选牌），否则自动
+    var needGive = false;
+    givRec.forEach(function (gr) {
+      var cands = tributeCandidates(S.hands[gr.giver]);
+      gr.candidates = cands;
+      if (isHuman(gr.giver) && cands.length > 1) {
+        gr.awaitGive = true; needGive = true;
+        S.tribute.pending.push(gr.giver); S.tribute.pendingKinds[gr.giver] = 'give'; S.phase = 'tribute';
+      } else {
+        doGive(gr, cands[0]);
+      }
     });
-    if (isSingle) S.firstLeader = seatOfPos[3];                       // 单贡：末游先出
-    else S.firstLeader = (cmp(givRec[0].held) === cmp(givRec[1].held)) ? (seatOfPos[0] + 1) % 4 : givRec[0].giver; // 双贡：进大牌者先出，同大=头游下家
-    givRec.forEach(function (gr) {                                    // 还贡：真人等，AI 自动
-      if (isHuman(gr.receiver)) { S.tribute.pending.push(gr.receiver); S.phase = 'tribute'; }
+    if (needGive) return; // startRound 见 phase='tribute' 会挂起等 humanTributeGiveAt
+    finishTributeGives(false);
+  }
+  function doGive(gr, card) {
+    S.hands[gr.giver] = S.hands[gr.giver].filter(function (c) { return c.id !== card.id; });
+    S.hands[gr.receiver].push(card); gr.held = card; gr.awaitGive = false;
+  }
+  // 进贡全部完成后：定领头 + 还贡（真人收贡者挂起等选，AI 自动还最小合规牌）
+  function finishTributeGives(fromGiveAction) {
+    var t = S.tribute, pairs = t.pairs;
+    if (pairs.length === 1) S.firstLeader = pairs[0].giver;             // 单贡：末游先出
+    else S.firstLeader = (cmp(pairs[0].held) === cmp(pairs[1].held)) ? (S.prevResult.finishOrder[0] + 1) % 4 : pairs[0].giver; // 双贡：进大牌者先出，同大=头游下家
+    pairs.forEach(function (gr) {                                       // 还贡：真人等，AI 自动
+      if (isHuman(gr.receiver)) { t.pending.push(gr.receiver); t.pendingKinds[gr.receiver] = 'back'; S.phase = 'tribute'; }
       else { var back = returnLow(S.hands[gr.receiver]); S.hands[gr.receiver] = S.hands[gr.receiver].filter(function (c) { return c.id !== back.id; }); S.hands[gr.giver].push(back); gr.back = back; }
     });
+    if (fromGiveAction && t.pending.length === 0) { S.phase = 'double'; S.doubleTurn = 0; schedule(); }  // 无人待还贡：推进到加倍
   }
+  // 进贡方选牌（P0-1）：所选必须在本对 candidates 内
+  function humanTributeGiveAt(seat, id) {
+    if (!(S.phase === 'tribute' && S.tribute && S.tribute.pendingKinds[seat] === 'give')) return false;
+    var gr = S.tribute.pairs.filter(function (x) { return x.giver === seat && x.awaitGive; })[0];
+    if (!gr) return false;
+    var card = gr.candidates.filter(function (c) { return c.id === id; })[0];
+    if (!card) return false;
+    doGive(gr, card);
+    S.tribute.pending = S.tribute.pending.filter(function (s) { return s !== seat; });
+    delete S.tribute.pendingKinds[seat];
+    var still = S.tribute.pairs.some(function (p) { return p.awaitGive; });
+    if (!still) finishTributeGives(true); else render();
+    return true;
+  }
+  function humanTributeGive(id) { return humanTributeGiveAt(0, id); }
   function humanTributeAt(seat, id) {
     if (!(S.phase === 'tribute' && S.tribute && S.tribute.pending.indexOf(seat) >= 0)) return false;
+    if (S.tribute.pendingKinds[seat] !== 'back') return false;       // 该座是进贡方待办，请走 tributeGive
     var p = S.tribute.pairs.filter(function (x) { return x.receiver === seat; })[0];
+    if (!p) return false;
     var card = S.hands[seat].filter(function (c) { return c.id === id; })[0];
     if (!card) return false;
     if (card.s === 'W' || isWildCard(card)) return false;            // 王/逢人配不能还
@@ -334,6 +392,18 @@
   }
   function humanPass() { return humanPassAt(0); }
   function humanTimeoutAt(seat) {
+    if (S.phase === 'double' && S.doubleTurn === seat) { doubleDecision(seat, false); return; }  // 加倍超时=不加倍
+    if (S.phase === 'tribute' && S.tribute && S.tribute.pending.indexOf(seat) >= 0) {
+      // 进/还贡超时：系统代选（进贡取候选第一张，还贡取最小合规牌）
+      if (S.tribute.pendingKinds[seat] === 'give') {
+        var gr = S.tribute.pairs.filter(function (x) { return x.giver === seat && x.awaitGive; })[0];
+        if (gr && gr.candidates.length) humanTributeGiveAt(seat, gr.candidates[0].id);
+      } else {
+        var pb = S.tribute.pairs.filter(function (x) { return x.receiver === seat; })[0];
+        if (pb) humanTributeAt(seat, returnLow(S.hands[seat]).id);
+      }
+      return;
+    }
     if (!(S.phase === 'play' && S.turn === seat && !S.finished[seat])) return;
     if (S.top) { humanPassAt(seat); return; }
     var all = Rules.generateAllPlays(S.hands[seat], S.level).filter(function (p) { return !Rules.isBomb(p); });
@@ -350,6 +420,7 @@
       case 'pass': return humanPassAt(seat);
       case 'double': humanDoubleAt(seat, !!action.yes); return true;
       case 'tribute': return humanTributeAt(seat, action.id);
+      case 'tributeGive': return humanTributeGiveAt(seat, action.id);
       case 'timeout': humanTimeoutAt(seat); return true;
       default: return false;
     }
@@ -398,11 +469,13 @@
   var Game = {
     init: init, toLobby: toLobby, quickStart: quickStart, nextRound: nextRound,
     humanPlay: humanPlay, humanPass: humanPass, humanTimeout: humanTimeout, humanDouble: humanDouble,
-    humanTribute: humanTribute, setNoShuffle: setNoShuffle, setBase: setBase,
+    humanTribute: humanTribute, humanTributeGive: humanTributeGive,
+    setNoShuffle: setNoShuffle, setBase: setBase,
     snapshot: snapshot, snapshotFor: snapshotFor, act: act, setHumanSeats: setHumanSeats,
     setNames: setNames, resume: resume,
     humanPlayAt: humanPlayAt, humanPassAt: humanPassAt, humanDoubleAt: humanDoubleAt,
-    humanTributeAt: humanTributeAt, humanTimeoutAt: humanTimeoutAt,
+    humanTributeAt: humanTributeAt, humanTributeGiveAt: humanTributeGiveAt, humanTimeoutAt: humanTimeoutAt,
+    _tributeCandidates: tributeCandidates, _testFirstLeader: function () { return S && S.firstLeader; },
     get RANK_LABEL() { return RANK_LABEL; }, get NAMES() { return NAMES; },
     set AUTO_ALL(v) { humanSeats = v ? [] : [0]; }, set sync(v) { SYNC = v; },
     _team: team, _partner: partner, _leaderAfter: leaderAfter, _runTributeTest: _runTributeTest,
