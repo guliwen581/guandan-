@@ -104,7 +104,7 @@
     quickStart: function () { Net.next(); },
     nextRound: function () { Net.next(); },
     toLobby: function () { Net.leaveRoom(); },
-    setNoShuffle: function () {}, setBase: function () {}, setGoldMode: function () {}, init: function () {}
+    setNoShuffle: function () {}, setBase: function () {}, setGoldMode: function () {}, setMatchMode: function () {}, init: function () {}
   };
 
   GLOBAL.Net = Net;

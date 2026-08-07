@@ -44,7 +44,7 @@
   var S = null, SYNC = false, UI = null;
   var humanSeats = [0];                       // 真人座位；AUTO_ALL 时清空
   function isHuman(seat) { return humanSeats.indexOf(seat) >= 0; }
-  var lobbyMode = { noShuffle: false, gold: false, rounds: 0 };  // rounds>0：好友房限定局数赛制
+  var lobbyMode = { noShuffle: false, gold: false, rounds: 0, match: false };  // rounds>0：限定局数；match：单机积分赛(4局,初始分2000)
   var persisted = loadPersisted();
 
   function team(seat) { return seat & 1; }
@@ -93,7 +93,8 @@
       phase: 'lobby', base: base || persisted.base || 800, mult: 1, level: '2',
       teamLevel: ['2', '2'], dealerTeam: 0, roundNo: 0, matchOver: false, matchWinner: null,
       prevResult: null, firstLeader: 0, tribute: null,
-      mode: { noShuffle: lobbyMode.noShuffle, gold: lobbyMode.gold, rounds: lobbyMode.rounds }, lastDeck: null,
+      mode: { noShuffle: lobbyMode.noShuffle, gold: lobbyMode.gold, rounds: lobbyMode.match ? 4 : lobbyMode.rounds, match: lobbyMode.match },
+      scores: [2000, 2000, 2000, 2000], lastDeck: null,   // P1-5 积分赛：每人初始2000分（对标APK赛制）
       hands: [[], [], [], []], finished: [false, false, false, false], finishOrder: [],
       top: null, passCount: 0, turn: 0, doubled: [null, null, null, null], doubleTurn: 0,
       passed: [false, false, false, false], discarded: [], discSuits: [], replay: [], lastResult: null,
@@ -133,7 +134,8 @@
       seats.push({
         id: ni, pos: SEAT_POS[ni], name: NAMES[i], face: FACES[i], team: team(ni),
         teamLevel: S.teamLevel[team(i)],
-        coins: S.coins[i], handCount: S.hands[i].length, finished: S.finished[i],
+        coins: S.coins[i], score: S.scores ? S.scores[i] : null,
+        handCount: S.hands[i].length, finished: S.finished[i],
         alarm: (!S.finished[i] && S.hands[i].length > 0 && S.hands[i].length <= 2) ? S.hands[i].length : 0,  // P0-3 报警：剩1-2张
         rank: ridx >= 0 ? RANK_LABEL[ridx] : null,
         doubled: S.doubled[i], passed: S.passed[i],
@@ -171,6 +173,7 @@
         rankMult: lr.rankMult,
         newLevel: lr.newLevel, matchOver: lr.matchOver,
         matchWinner: lr.matchWinner == null ? null : (lr.matchWinner === vt ? 0 : 1),
+        scores: lr.scores ? [lr.scores[viewer], lr.scores[(viewer + 1) % 4], lr.scores[(viewer + 2) % 4], lr.scores[(viewer + 3) % 4]] : null,
         replay: lr.replay ? lr.replay.map(function (ev) {   // P1-3 回放事件：座位换算到 viewer 视角
           var e = {}; for (var k in ev) e[k] = ev[k];
           if (e.seat != null) e.seat = rot(e.seat);
@@ -238,7 +241,7 @@
   // ---------- 一局开始（发牌 + 进贡）----------
   function startRound() {
     S.roundNo++;
-    S.level = S.mode.gold ? '2' : S.teamLevel[S.dealerTeam];  // 金币场固定级牌2（对标APK赛制"固定2为级牌"）
+    S.level = (S.mode.gold || S.mode.match) ? '2' : S.teamLevel[S.dealerTeam];  // 金币场/积分赛固定级牌2（对标APK赛制"固定2为级牌"）
     S.mult = 1; S.finished = [false, false, false, false]; S.finishOrder = []; S.replay = [];
     S.top = null; S.passCount = 0; S.doubled = [null, null, null, null]; S.doubleTurn = 0;
     S.passed = [false, false, false, false]; S.discarded = []; S.discSuits = []; S.lastResult = null; S.tribute = null;
@@ -361,7 +364,7 @@
     if (S.phase !== 'double') return;
     S.doubled[seat] = !!yes;
     S.replay.push({ t: 'dbl', seat: seat, yes: !!yes });
-    if (yes) S.mult = S.mode.gold ? Math.min(S.mult * 2, 50000) : Math.min(S.mult * 2, 64);
+    if (yes) S.mult = (S.mode.gold || S.mode.match) ? Math.min(S.mult * 2, 50000) : Math.min(S.mult * 2, 64);
     S.doubleTurn++;
     if (S.doubleTurn >= 4) { S.phase = 'play'; S.turn = S.firstLeader; schedule(); }
     else schedule();
@@ -387,7 +390,7 @@
     S.passed = [false, false, false, false];
     play.cards.forEach(function (c) { S.discarded.push(c.r); S.discSuits.push(c.s); });
     S.replay.push({ t: 'play', seat: seat, type: play.type, cards: play.cards.map(function (c) { return { s: c.s, r: c.r, asRank: c.asRank, asSuit: c.asSuit }; }) });  // P1-3 回放事件
-    if (Rules.isBomb(play)) S.mult = S.mode.gold ? Math.min(S.mult * bombMultFor(play), 50000) : Math.min(S.mult * 2, 64);
+    if (Rules.isBomb(play)) S.mult = (S.mode.gold || S.mode.match) ? Math.min(S.mult * bombMultFor(play), 50000) : Math.min(S.mult * 2, 64);
     if (S.hands[seat].length === 0) { S.finished[seat] = true; S.finishOrder.push(seat); }
     if (roundOver()) { endRound(); return; }
     S.turn = nextAlive(seat); schedule();
@@ -466,22 +469,27 @@
     var wp = pos.map(function (p, i) { return team(i) === winTeam ? p : 0; }).filter(Boolean).sort(function (a, b) { return a - b; });
     var combo = (wp[0] === 1 && wp[1] === 2) ? 3 : (wp[0] === 1 && wp[1] === 3) ? 2 : 1;
     var comboName = combo === 3 ? '双上' : combo === 2 ? '头游+三游' : '头游+末游';
-    var rankMult = combo === 3 ? 4 : combo === 2 ? 2 : 1;               // 金币场排名倍数（APK：双下4/一三游2/一四游1）
-    var delta = S.base * S.mult * (S.mode.gold ? rankMult : combo), deltas = [0, 0, 0, 0];
-    for (var s = 0; s < 4; s++) { deltas[s] = team(s) === winTeam ? delta : -delta; S.coins[s] += deltas[s]; }
+    var rankMult = combo === 3 ? 4 : combo === 2 ? 2 : 1;               // 排名倍数（APK：双下4/一三游2/一四游1）
+    var useRank = S.mode.gold || S.mode.match;
+    var delta = S.base * S.mult * (useRank ? rankMult : combo), deltas = [0, 0, 0, 0];
+    for (var s = 0; s < 4; s++) {
+      deltas[s] = team(s) === winTeam ? delta : -delta;
+      if (S.mode.match) S.scores[s] += deltas[s]; else S.coins[s] += deltas[s];  // 积分赛结算到积分，不动金币
+    }
 
-    var adv = S.mode.gold ? { win: false } : advanceLevel(S.teamLevel[winTeam], combo);  // 金币场无升级/无终局
+    var adv = useRank ? { win: false } : advanceLevel(S.teamLevel[winTeam], combo);  // 金币场/积分赛无升级/无终局
     S.dealerTeam = winTeam;
     S.prevResult = { finishOrder: S.finishOrder.slice(), pos: pos };
     if (adv.win) { S.matchOver = true; S.matchWinner = winTeam; }
-    else if (!S.mode.gold) S.teamLevel[winTeam] = adv.level;
-    if (!S.matchOver && S.mode.rounds && S.roundNo >= S.mode.rounds) {   // 限定局数打完：按金币决胜
+    else if (!useRank) S.teamLevel[winTeam] = adv.level;
+    if (!S.matchOver && S.mode.rounds && S.roundNo >= S.mode.rounds) {   // 限定局数打完：按金币或积分决胜
       S.matchOver = true;
-      S.matchWinner = (S.coins[0] + S.coins[2]) >= (S.coins[1] + S.coins[3]) ? 0 : 1;
+      var k0 = S.mode.match ? S.scores : S.coins;
+      S.matchWinner = (k0[0] + k0[2]) >= (k0[1] + k0[3]) ? 0 : 1;
     }
 
     S.replay.push({ t: 'settle', combo: comboName });
-    S.lastResult = { finishOrder: S.finishOrder.slice(), pos: pos, winTeam: winTeam, combo: combo, comboName: comboName, rankMult: rankMult, delta: delta, deltas: deltas, newLevel: adv.win ? null : (S.mode.gold ? null : adv.level), matchOver: S.matchOver, matchWinner: S.matchWinner, replay: S.replay.slice() };
+    S.lastResult = { finishOrder: S.finishOrder.slice(), pos: pos, winTeam: winTeam, combo: combo, comboName: comboName, rankMult: rankMult, delta: delta, deltas: deltas, newLevel: adv.win ? null : (useRank ? null : adv.level), matchOver: S.matchOver, matchWinner: S.matchWinner, replay: S.replay.slice(), scores: S.mode.match ? S.scores.slice() : null };
     save();
     render();
     if (UI && UI.onSettle) UI.onSettle(S.lastResult);
@@ -492,8 +500,9 @@
   function quickStart(base) { S = newMatch(base || S && S.base); startRound(); }
   function nextRound() { if (S.matchOver) return; startRound(); }
   function setNoShuffle(v) { lobbyMode.noShuffle = !!v; if (S && S.phase === 'lobby') render(); }
-  function setGoldMode(v) { lobbyMode.gold = !!v; if (S && S.phase === 'lobby') render(); }
+  function setGoldMode(v) { lobbyMode.gold = !!v; lobbyMode.match = false; if (S && S.phase === 'lobby') render(); }
   function setMatchRounds(n) { lobbyMode.rounds = (n === 4 || n === 8 || n === 16) ? n : 0; }
+  function setMatchMode(v) { lobbyMode.match = !!v; if (v) { lobbyMode.gold = false; lobbyMode.rounds = 0; } if (S && S.phase === 'lobby') render(); }
   function setBase(b) { if (S && S.phase === 'lobby') { S.base = b; render(); } }
   function setHumanSeats(arr) { humanSeats = (arr || []).slice(); }
   function setNames(arr) { if (arr && arr.length === 4) NAMES = arr.slice(); }
@@ -509,6 +518,7 @@
     humanPlay: humanPlay, humanPass: humanPass, humanTimeout: humanTimeout, humanDouble: humanDouble,
     humanTribute: humanTribute, humanTributeGive: humanTributeGive,
     setNoShuffle: setNoShuffle, setBase: setBase, setGoldMode: setGoldMode, setMatchRounds: setMatchRounds,
+    setMatchMode: setMatchMode,
     snapshot: snapshot, snapshotFor: snapshotFor, act: act, setHumanSeats: setHumanSeats,
     setNames: setNames, resume: resume,
     humanPlayAt: humanPlayAt, humanPassAt: humanPassAt, humanDoubleAt: humanDoubleAt,

@@ -128,9 +128,10 @@
     }).join('');
     var modes = MODES.map(function (md) { var on = md.m === 'classic' ? !ns : md.m === 'noshuffle' ? ns : false; return '<li class="' + (on ? 'on' : '') + '" data-mode="' + (md.m || '') + '">' + md.n + '</li>'; }).join('');
     var selRoom = ROOMS.filter(function (r) { return r.b === selectedBase; })[0] || ROOMS[0];
-    var goldOn = snap && snap.mode && snap.mode.gold;
-    var goldtoggle = '<div class="goldtoggle"><span data-gold=""' + (goldOn ? '' : ' class="on"') + '>🏆 晋级场<div class="gt-sub">打2→A 升级赛制</div></span><span data-gold="1"' + (goldOn ? ' class="on"' : '') + '>🪙 金币场<div class="gt-sub">无限局·底分×倍数结算</div></span></div>';
-    return '<div class="lobby"><div class="clouds"></div><div class="deco"></div><div class="topbar"><div class="back">‹ 掼蛋经典' + (vip() ? '<i class="vip">VIP</i>' : '') + '</div><div class="currency"><span>🪙 <b>' + coins + '</b></span><span>💎 <b>' + gem() + '</b></span></div><div class="shop"><span data-act="shop-vip">月卡会员</span><span data-act="shop-first">首充礼包</span><span data-act="shop-free">免费金币</span></div></div><div class="lobby-body">' + goldtoggle + '<ul class="modes">' + modes + '</ul><div class="rooms">' + rooms + '</div></div><button class="quickstart" data-act="quick">快速开始<div class="sub">' + (goldOn ? '金币场' : '经典玩法') + '·' + selRoom.n + (ns ? '·不洗牌' : '') + '</div></button><button class="quickstart onlinebtn" data-act="online">🌐 联机对战<div class="sub">创建/加入房间·和朋友同屏</div></button></div>' + (shop ? shopHtml() : '');
+    var goldOn = snap && snap.mode && snap.mode.gold, matchOn = snap && snap.mode && snap.mode.match;
+    var noneOn = !goldOn && !matchOn;
+    var goldtoggle = '<div class="goldtoggle"><span data-gold=""' + (noneOn ? ' class="on"' : '') + '>🏆 晋级场<div class="gt-sub">打2→A 升级赛制</div></span><span data-gold="1"' + (goldOn ? ' class="on"' : '') + '>🪙 金币场<div class="gt-sub">无限局·底分×倍数结算</div></span><span data-gold="match"' + (matchOn ? ' class="on"' : '') + '>🏟️ 积分赛<div class="gt-sub">4局·积分排名决胜</div></span></div>';
+    return '<div class="lobby"><div class="clouds"></div><div class="deco"></div><div class="topbar"><div class="back">‹ 掼蛋经典' + (vip() ? '<i class="vip">VIP</i>' : '') + '</div><div class="currency"><span>🪙 <b>' + coins + '</b></span><span>💎 <b>' + gem() + '</b></span></div><div class="shop"><span data-act="shop-vip">月卡会员</span><span data-act="shop-first">首充礼包</span><span data-act="shop-free">免费金币</span></div></div><div class="lobby-body">' + goldtoggle + '<ul class="modes">' + modes + '</ul><div class="rooms">' + rooms + '</div></div><button class="quickstart" data-act="quick">快速开始<div class="sub">' + (matchOn ? '积分赛' : goldOn ? '金币场' : '经典玩法') + '·' + selRoom.n + (ns ? '·不洗牌' : '') + '</div></button><button class="quickstart onlinebtn" data-act="online">🌐 联机对战<div class="sub">创建/加入房间·和朋友同屏</div></button></div>' + (shop ? shopHtml() : '');
   }
 
   function onlineEntryHtml() {
@@ -269,7 +270,9 @@
 
     return '<div class="table"><div class="sky"></div><div class="mtn"></div><div class="pag l">🏯</div><div class="pag r">🏯</div>' +
       '<div class="hud"><span>本局打 <b>' + esc(level) + '</b></span><span>倍数 <b>' + snap.mult + '</b></span><span>第' + snap.roundNo + (snap.mode && snap.mode.rounds ? '/' + snap.mode.rounds : '') + '局</span></div>' +
-      (snap.mode && snap.mode.gold
+      (snap.mode && snap.mode.match
+        ? '<div class="tlv"><i class="t0">🏟️ 积分赛</i><i class="t1">我方 ' + (snap.seats[0].score + snap.seats[2].score) + ' : ' + (snap.seats[1].score + snap.seats[3].score) + ' 对方</i></div>'
+        : snap.mode && snap.mode.gold
         ? '<div class="tlv"><i class="t0">🪙 金币场</i><i class="t1">底分 ' + snap.base + ' · 封顶50000倍</i></div>'
         : '<div class="tlv"><i class="t0">我方 ' + snap.teamLevel[0] + '级</i><i class="t1">对方 ' + snap.teamLevel[1] + '级</i></div>') +
       '<div class="tools"><button data-act="counter" class="' + (showCounter ? 'on' : '') + '">记牌器</button><span class="volwrap">🔊<input type="range" min="0" max="100" value="' + vol() + '" data-vol></span><button data-act="voice" class="voice' + (voiceOn() ? ' on' : '') + '" title="人声解说">' + (voiceOn() ? '🗣️' : '🔈') + '</button><button data-act="mute">' + (muted() ? '🔇' : '') + '</button>' + (hasNet() && Net.active && Net.seat === 0 ? '<button data-act="o-dissolve" class="dangerbtn">解散</button>' : '') + '<button data-act="more">更多</button></div>' +
@@ -282,10 +285,17 @@
   }
 
   function settleHtml(r) {
-    var win = r.winTeam === 0, title = r.matchOver ? (win ? '🏆 比赛胜利！' : '比赛失利') : '本局结算';
-    var rows = r.finishOrder.map(function (sid, i) { var seat = lastSnap.seats[sid], w = seat.team === r.winTeam, d = r.deltas[sid]; return '<div class="row ' + (w ? 'win' : '') + '" style="animation-delay:' + (i * 0.08) + 's"><span class="fc">' + faceSVG(sid) + '</span><span class="nm">' + esc(seat.name) + (sid === 0 ? '（你）' : '') + '</span><span class="rl">' + Game.RANK_LABEL[r.pos[sid] - 1] + '</span><span class="dl ' + (d >= 0 ? 'plus' : 'minus') + '">' + (d >= 0 ? '+' : '') + d + '</span></div>'; }).join('');
+    var win = r.winTeam === 0, isMatch = !!(lastSnap.mode && lastSnap.mode.match && r.scores);
+    var title = r.matchOver ? (win ? '🏆 比赛胜利！' : '比赛失利') : '本局结算';
+    var order = isMatch ? [0, 1, 2, 3].sort(function (a, b) { return r.scores[b] - r.scores[a]; }) : r.finishOrder;
+    var rows = order.map(function (sid, i) { var seat = lastSnap.seats[sid], w = seat.team === r.winTeam, d = r.deltas[sid];
+      var val = isMatch ? '<span class="dl ' + (r.scores[sid] >= 2000 ? 'plus' : 'minus') + '">' + r.scores[sid] + '分</span>'
+                        : '<span class="dl ' + (d >= 0 ? 'plus' : 'minus') + '">' + (d >= 0 ? '+' : '') + d + '</span>';
+      var rl = isMatch ? '第' + (i + 1) + '名' : Game.RANK_LABEL[r.pos[sid] - 1];
+      return '<div class="row ' + (w ? 'win' : '') + '" style="animation-delay:' + (i * 0.08) + 's"><span class="fc">' + faceSVG(sid) + '</span><span class="nm">' + esc(seat.name) + (sid === 0 ? '（你）' : '') + '</span><span class="rl">' + rl + '</span>' + val + '</div>'; }).join('');
     var extra = r.matchOver ? (win ? ' · 打通A，赢得整局！' : ' · 对方打通A') : (r.newLevel ? ' · 我方升至' + r.newLevel : '');
     if (lastSnap.mode && lastSnap.mode.gold) extra = ' · 底分' + lastSnap.base + ' × 倍数' + lastSnap.mult + ' × 排名' + (r.rankMult || 1) + '（双下4/一三游2/一四游1）';
+    if (isMatch) extra = ' · 底分' + lastSnap.base + ' × 倍数' + lastSnap.mult + ' × 排名' + (r.rankMult || 1) + ' · 4局积分排名';
     return '<div class="settle">' + (win ? confettiHtml() : '') + '<div class="box"><h2>' + title + '</h2><div class="combo">' + (win ? '我方胜 🎉' : '对方胜') + ' · ' + r.comboName + ' · 倍数×' + lastSnap.mult + extra + '</div>' + rows + '<div class="btns"><button class="again" data-act="again">' + (r.matchOver ? '新比赛' : '再来一局') + '</button>' + (r.replay ? '<button class="back2" data-act="replay">🎬 回放本局</button>' : '') + '<button class="back2" data-act="lobby">返回大厅</button></div></div></div>';
   }
   // P1-3 回放：按手逐步还原本局公共事件
@@ -489,7 +499,8 @@
   });
   app.addEventListener('input', function (e) { var v = e.target.closest && e.target.closest('[data-vol]'); if (v) { var val = +v.value; if (typeof Sfx !== 'undefined' && Sfx && Sfx.setVolume) Sfx.setVolume(val / 100); try { localStorage.setItem('guandan_vol', val); } catch (er) {} } });
   app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-mode]'); if (!m || !lastSnap || lastSnap.phase !== 'lobby') return; var mode = m.dataset.mode, cur = lastSnap.mode && lastSnap.mode.noShuffle; if (mode === 'classic') G.setNoShuffle(false); else if (mode === 'noshuffle') G.setNoShuffle(!cur); });
-  app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-gold]'); if (!m || !lastSnap || lastSnap.phase !== 'lobby') return; sfx('click'); G.setGoldMode(m.dataset.gold === '1'); });
+  app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-gold]'); if (!m || !lastSnap || lastSnap.phase !== 'lobby') return; sfx('click');
+    if (m.dataset.gold === '1') G.setGoldMode(true); else if (m.dataset.gold === 'match') G.setMatchMode(true); else { G.setGoldMode(false); G.setMatchMode(false); } });
   app.addEventListener('click', function (e) { if (demo) return; var m = e.target.closest && e.target.closest('[data-rounds]'); if (!m || !hasNet() || !Net.active || Net.started) return; Net.roundsChoice = +m.dataset.rounds; sfx('click'); render(); });
 
   var UI = { render: render, onLobby: function () { selected.clear(); locks = []; hintIdx = -1; dealShown = false; }, onSettle: function () {} };
