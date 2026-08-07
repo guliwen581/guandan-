@@ -280,6 +280,13 @@ button:active { transform: scale(.93); }
 .counter .cell .r { font-weight: 800; } .counter .cell .n { color: #9ae69a; font-size: 11px; }
 .counter .cell.zero { opacity: .4; } .counter .cell.zero .n { color: #ff8a6a; }
 .counter .cell.jk .r { color: #ff8a7a; }
+.counter .sflamps { margin-top: 8px; display: flex; align-items: center; gap: 6px; font-size: 15px; }
+.counter .sflamps span { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; background: #ffffff14; }
+.counter .sflamps span.on { color: #9ae69a; box-shadow: 0 0 0 1px #9ae69a66, 0 0 8px #9ae69a44; }
+.counter .sflamps span.on.red { color: #ffb09a; box-shadow: 0 0 0 1px #ffb09a66, 0 0 8px #ffb09a44; }
+.counter .sflamps span.off { opacity: .35; filter: grayscale(1); }
+.counter .sflamps i { font-style: normal; font-size: 10px; color: #c8d6f0; opacity: .8; line-height: 1.25; }
 
 /* 结算 */
 .settle { position: absolute; inset: 0; z-index: 20; background: #000b; display: flex; align-items: center; justify-content: center; animation: fade .25s; backdrop-filter: blur(3px); }

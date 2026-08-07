@@ -22,6 +22,13 @@
 
   var selected = new Set(), locks = [];
   var lastSnap = null, selectedBase = 800, hintIdx = -1, lastRoundNo = null;
+  var SORTS = ['size', 'count', 'suit'], SORT_NAME = { size: '按大小', count: '按张数', suit: '按花色' };
+  function sortMode() { try { var m = localStorage.getItem('gd_sort'); return SORTS.indexOf(m) >= 0 ? m : 'size'; } catch (e) { return 'size'; } }
+  function cycleSort() {
+    var m = SORTS[(SORTS.indexOf(sortMode()) + 1) % SORTS.length];
+    try { localStorage.setItem('gd_sort', m); } catch (e) {}
+    toast('手牌排序：' + SORT_NAME[m]); render(lastSnap);
+  }
   var showCounter = false, dealShown = false;
   var timerKey = null, timeLeft = 0, timerInt = null;
   var demo = /demo/.test(location.search);
@@ -176,6 +183,15 @@
     var tbc = {};   // 进贡候选牌高亮（P0-1：只能从并列最大的牌里选）
     if (snap.tribute && snap.tribute.giveCandidates) snap.tribute.giveCandidates.forEach(function (id) { tbc[id] = 1; });
     var org = Rules.organize(hand, level, locks);
+    var sm = sortMode();
+    if (sm !== 'size') {   // P1-4 排序模式：锁定栏保持前置，余栏重排
+      var lockedCols = org.columns.filter(function (c) { return c.locked; });
+      var free = org.columns.filter(function (c) { return !c.locked; });
+      var suitOrd = { S: 0, H: 1, C: 2, D: 3 };
+      if (sm === 'count') free.sort(function (a, b) { return b.cards.length - a.cards.length; });
+      else free.sort(function (a, b) { var sa = a.cards[0] ? (a.cards[0].s === 'W' ? 9 : suitOrd[a.cards[0].s]) : 9, sb = b.cards[0] ? (b.cards[0].s === 'W' ? 9 : suitOrd[b.cards[0].s]) : 9; return sa - sb; });  // 稳定排序=同花色内保持点数序
+      org.columns = lockedCols.concat(free);
+    }
     var li = -1;
     var cols = org.columns.map(function (col) {
       if (col.locked) li++;
@@ -219,7 +235,7 @@
   }
   function cornerHtml(snap) {
     if (!snap.canPlay) return '<div class="corner-actions"><button class="chatbtn" data-act="chat">💬</button></div>';
-    return '<div class="corner-actions"><button class="ca-lock" data-act="lock">' + (locks.length ? '恢复' : '锁牌') + '</button><button class="ca-arrange" data-act="rails">⚡一键理</button><button class="chatbtn" data-act="chat">💬</button></div>';
+    return '<div class="corner-actions"><button class="ca-lock" data-act="lock">' + (locks.length ? '恢复' : '锁牌') + '</button><button class="ca-arrange" data-act="rails">⚡一键理</button><button class="ca-sort" data-act="sort">' + SORT_NAME[sortMode()] + '</button><button class="chatbtn" data-act="chat">💬</button></div>';
   }
 
   function tableHtml(snap) {
@@ -240,7 +256,10 @@
     var selfMeta = '<div class="selfmeta' + (snap.turn === 0 ? ' active' : '') + '"><div class="avatar">' + faceSVG(0) + (self.doubled ? '<span class="dbl">加倍</span>' : '') + (self.alarm ? '<span class="alarm">🔔' + self.alarm + '</span>' : '') + (self.rank ? '<span class="rank r' + rankIdx(self.rank) + '">' + self.rank + '</span>' : '') + '</div><span class="nm"><i class="gem"></i>' + esc(self.name) + '</span><span class="cn">🪙 ' + self.coins + '</span></div>';
     var doublebar = snap.canDouble ? '<div class="doublebar"><button class="yes" data-act="dbl-yes">加倍</button><button class="no" data-act="dbl-no">不加倍</button></div>' : '';
     var counterPanel = '';
-    if (showCounter && snap.counter) { var cells = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', 'SJ', 'BJ'].map(function (r) { var n = snap.counter[r], jk = r === 'SJ' || r === 'BJ'; var lab = jk ? (r === 'BJ' ? '大' : '小') : r; return '<div class="cell' + (n <= 0 ? ' zero' : '') + (jk ? ' jk' : '') + '"><div class="r">' + lab + '</div><div class="n">' + n + '</div></div>'; }).join(''); counterPanel = '<div class="counter"><h4>记牌器<span>剩余张数</span></h4><div class="grid">' + cells + '</div></div>'; }
+    if (showCounter && snap.counter) { var cells = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', 'SJ', 'BJ'].map(function (r) { var n = snap.counter[r], jk = r === 'SJ' || r === 'BJ'; var lab = jk ? (r === 'BJ' ? '大' : '小') : r; return '<div class="cell' + (n <= 0 ? ' zero' : '') + (jk ? ' jk' : '') + '"><div class="r">' + lab + '</div><div class="n">' + n + '</div></div>'; }).join('');
+      var lamps = '';
+      if (snap.sfHint) { lamps = '<div class="sflamps">' + ['S', 'H', 'C', 'D'].map(function (s) { return '<span class="' + (snap.sfHint[s] ? 'on' : 'off') + (Cards.SUIT_RED[s] ? ' red' : '') + '">' + Cards.SUIT_SYM[s] + '</span>'; }).join('') + '<i>花色灯=剩余牌仍可能组成该花色同花顺</i></div>'; }
+      counterPanel = '<div class="counter"><h4>记牌器<span>剩余张数</span></h4><div class="grid">' + cells + '</div>' + lamps + '</div>'; }
 
     return '<div class="table"><div class="sky"></div><div class="mtn"></div><div class="pag l">🏯</div><div class="pag r">🏯</div>' +
       '<div class="hud"><span>本局打 <b>' + esc(level) + '</b></span><span>倍数 <b>' + snap.mult + '</b></span><span>第' + snap.roundNo + '局</span></div>' +
@@ -419,6 +438,7 @@
         render(lastSnap);
         break;
       case 'counter': showCounter = !showCounter; render(lastSnap); break;
+      case 'sort': cycleSort(); break;
       case 'voice': if (typeof Voice !== 'undefined' && Voice) toast(Voice.toggle() ? '🗣️ 人声解说 开' : '🔈 人声解说 关'); render(lastSnap); break;
       case 'mute': if (typeof Sfx !== 'undefined' && Sfx) Sfx.toggle(); render(lastSnap); break;
       case 'dbl-yes': sfx('double'); G.humanDouble(true); break;

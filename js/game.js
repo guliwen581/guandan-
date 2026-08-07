@@ -96,7 +96,7 @@
       mode: { noShuffle: lobbyMode.noShuffle, gold: lobbyMode.gold }, lastDeck: null,
       hands: [[], [], [], []], finished: [false, false, false, false], finishOrder: [],
       top: null, passCount: 0, turn: 0, doubled: [null, null, null, null], doubleTurn: 0,
-      passed: [false, false, false, false], discarded: [], lastResult: null,
+      passed: [false, false, false, false], discarded: [], discSuits: [], lastResult: null,
       coins: (persisted.coins && persisted.coins.length === 4) ? persisted.coins.slice() : [10000, 10000, 10000, 10000]
     };
   }
@@ -182,7 +182,7 @@
       dealerTeam: S.dealerTeam === vt ? 0 : 1, roundNo: S.roundNo,
       matchOver: S.matchOver, matchWinner: S.matchWinner == null ? null : (S.matchWinner === vt ? 0 : 1),
       tribute: tribute, mode: S.mode,
-      counter: buildCounter(viewer), discarded: S.discarded.length,
+      counter: buildCounter(viewer), sfHint: computeSfHint(S.discarded, S.discSuits), discarded: S.discarded.length,
       canPlay: S.phase === 'play' && S.turn === viewer && !S.finished[viewer],
       canDouble: S.phase === 'double' && S.doubleTurn === viewer,
       canTribute: S.phase === 'tribute' && S.tribute && S.tribute.pending.indexOf(viewer) >= 0,
@@ -191,6 +191,17 @@
     };
   }
   function snapshot() { return snapshotFor(0); }
+  // P1-2 同花顺可能性：某花色是否仍存在至少一个"5张点数的两副拷贝都未全打光"的连续窗口（对标 APK 记牌器花色灯）
+  var SF_WINDOWS = [['A', '2', '3', '4', '5'], ['2', '3', '4', '5', '6'], ['3', '4', '5', '6', '7'], ['4', '5', '6', '7', '8'], ['5', '6', '7', '8', '9'], ['6', '7', '8', '9', '10'], ['7', '8', '9', '10', 'J'], ['8', '9', '10', 'J', 'Q'], ['9', '10', 'J', 'Q', 'K'], ['10', 'J', 'Q', 'K', 'A']];
+  function computeSfHint(discRanks, discSuits) {
+    var disc = {};
+    for (var i = 0; i < discRanks.length; i++) { var k = discSuits[i] + '|' + discRanks[i]; disc[k] = (disc[k] || 0) + 1; }
+    var out = {};
+    ['S', 'H', 'C', 'D'].forEach(function (s) {
+      out[s] = SF_WINDOWS.some(function (w) { return w.every(function (r) { return 2 - (disc[s + '|' + r] || 0) > 0; }); });
+    });
+    return out;
+  }
   // 记牌器：viewer 视角的"未见牌"剩余张数 = 总张 − 自己手牌 − 已弃牌（即其余三家手中还有几张）。
   function buildCounter(viewer) {
     var total = {}; Cards.RANKS.forEach(function (r) { total[r] = 8; }); total['SJ'] = 2; total['BJ'] = 2;
@@ -224,7 +235,7 @@
     S.level = S.mode.gold ? '2' : S.teamLevel[S.dealerTeam];  // 金币场固定级牌2（对标APK赛制"固定2为级牌"）
     S.mult = 1; S.finished = [false, false, false, false]; S.finishOrder = [];
     S.top = null; S.passCount = 0; S.doubled = [null, null, null, null]; S.doubleTurn = 0;
-    S.passed = [false, false, false, false]; S.discarded = []; S.lastResult = null; S.tribute = null;
+    S.passed = [false, false, false, false]; S.discarded = []; S.discSuits = []; S.lastResult = null; S.tribute = null;
     deal();
     if (S.roundNo === 1) {
       // 文档§6①：首副由摸到♥2(本局逢人配/级牌红桃)者先出；两副牌有两张，取座位号最小者做确定性 tie-break
@@ -365,7 +376,7 @@
     S.hands[seat] = S.hands[seat].filter(function (c) { return !ids[c.id]; });
     S.top = { play: play, owner: seat }; S.passCount = 0;
     S.passed = [false, false, false, false];
-    play.cards.forEach(function (c) { S.discarded.push(c.r); });
+    play.cards.forEach(function (c) { S.discarded.push(c.r); S.discSuits.push(c.s); });
     if (Rules.isBomb(play)) S.mult = S.mode.gold ? Math.min(S.mult * bombMultFor(play), 50000) : Math.min(S.mult * 2, 64);
     if (S.hands[seat].length === 0) { S.finished[seat] = true; S.finishOrder.push(seat); }
     if (roundOver()) { endRound(); return; }
@@ -486,7 +497,7 @@
     humanPlayAt: humanPlayAt, humanPassAt: humanPassAt, humanDoubleAt: humanDoubleAt,
     humanTributeAt: humanTributeAt, humanTributeGiveAt: humanTributeGiveAt, humanTimeoutAt: humanTimeoutAt,
     _tributeCandidates: tributeCandidates, _testFirstLeader: function () { return S && S.firstLeader; },
-    _bombMultFor: bombMultFor,
+    _bombMultFor: bombMultFor, _computeSfHint: computeSfHint,
     get RANK_LABEL() { return RANK_LABEL; }, get NAMES() { return NAMES; },
     set AUTO_ALL(v) { humanSeats = v ? [] : [0]; }, set sync(v) { SYNC = v; },
     _team: team, _partner: partner, _leaderAfter: leaderAfter, _runTributeTest: _runTributeTest,
